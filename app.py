@@ -5,9 +5,9 @@ from google_play_scraper import Sort, reviews
 from datetime import datetime
 
 # Page Config
-st.set_page_config(page_title="Live Play Store Review Extractor", layout="wide")
+st.set_page_config(page_title="RW play store live cheker", page_icon="📊", layout="wide")
 
-st.title("📱 Live Google Play Review Extractor")
+st.title("📊 RW play store live cheker")
 st.markdown("Extract, filter by stars, date, and find custom 'hint' symbols in real-time.")
 
 # --- SIDEBAR SETTINGS ---
