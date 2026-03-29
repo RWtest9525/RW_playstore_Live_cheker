@@ -7,7 +7,7 @@ from datetime import datetime
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="📊", layout="wide")
 
-# CSS to fix text wrapping (Full comments) and sidebar styling
+# CSS for clean layout and text wrapping
 st.markdown("""
     <style>
     .stDataFrame td {
@@ -16,10 +16,6 @@ st.markdown("""
         line-height: 1.5 !important;
         vertical-align: top !important;
     }
-    /* Makes the input text clear and blue */
-    .stTextInput > div > div > input {
-        color: #4F8BF9;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -27,8 +23,7 @@ st.title("📊 RW play store live cheker")
 
 # --- SIDEBAR ---
 st.sidebar.header("Settings")
-# 1. Blank by default - No Link
-app_url = st.sidebar.text_input("Paste Play Store URL:", value="", placeholder="Paste link here...") 
+app_url = st.sidebar.text_input("Paste Play Store URL:", value="") 
 
 score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1], format_func=lambda x: "Show All" if x is None else f"{x} Stars")
 
@@ -39,11 +34,10 @@ target_date = st.sidebar.date_input("Select Date", datetime.now())
 st.sidebar.subheader("Hint Logic")
 hint_type = st.sidebar.radio("Hint Type", ["Show All", "No Hint (Normal .)", "Custom Symbol"])
 
-# 2. Blank by default - No Hint Symbol
+# Symbol input is now 100% blank by default
 custom_symbol = ""
 if hint_type == "Custom Symbol":
-    custom_symbol = st.sidebar.text_input("Enter Symbol", value="", placeholder="Leave blank or enter symbol...")
-    st.sidebar.caption("⌨️ Tip: Press Win + . to open emoji picker")
+    custom_symbol = st.sidebar.text_input("Enter Symbol", value="")
 
 def extract_id(url):
     match = re.search(r'id=([a-zA-Z0-9._]+)', url)
@@ -53,9 +47,9 @@ if st.button("🚀 Fetch All Available Reviews"):
     app_id = extract_id(app_url)
     
     if app_id:
-        with st.spinner("Searching through all reviews..."):
+        with st.spinner("Fetching real-time reviews..."):
             try:
-                # Fetching ALL data available
+                # Get all reviews from the Play Store
                 res = reviews_all(
                     app_id,
                     lang='en',
@@ -66,54 +60,53 @@ if st.button("🚀 Fetch All Available Reviews"):
                 
                 final_list = []
                 for r in res:
-                    # Clean data extraction
-                    raw_content = str(r['content']).strip()
-                    user_name = str(r['userName']).strip()
+                    content = r['content']
                     review_date = r['at'].date()
                     
-                    # Date Filtering
+                    # 1. Strict Date Match
                     if use_date and review_date != target_date:
                         continue
                     
-                    # Hint Filtering Logic
+                    # 2. Strict Hint Match
                     if hint_type == "Show All":
                         keep = True
                     elif hint_type == "No Hint (Normal .)":
-                        # Logic: Ends with dot or a normal letter/number
-                        keep = raw_content.endswith('.') or (len(raw_content) > 0 and raw_content[-1].isalnum())
+                        clean_text = content.strip()
+                        keep = clean_text.endswith('.') or (len(clean_text) > 0 and clean_text[-1].isalnum())
                     else:
-                        # Custom Symbol logic: If box is blank, show all. If symbol entered, filter by it.
+                        # Only match if the symbol is present at the end
                         if custom_symbol == "":
                             keep = True
                         else:
-                            keep = raw_content.endswith(custom_symbol)
+                            keep = content.strip().endswith(custom_symbol)
                     
                     if keep:
                         final_list.append({
                             "Date": r['at'].strftime('%Y-%m-%d %H:%M:%S'),
-                            "User": user_name,
+                            "User": r['userName'],
                             "Rating": r['score'],
-                            "Review": raw_content
+                            "Review": content
                         })
 
+                # --- Final Result Check ---
                 if final_list:
                     df = pd.DataFrame(final_list)
-                    st.success(f"Success! Found {len(df)} matching reviews.")
-                    
-                    # Display table with full wrapping
+                    st.success(f"Matching Reviews Found: {len(df)}")
                     st.dataframe(df, use_container_width=True)
                     
-                    # CSV Download (Fixes Excel Date ####### issue)
+                    # Export
                     csv_data = df.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         label="📥 Download Results",
                         data=csv_data,
-                        file_name=f"{app_id}_export.csv",
+                        file_name=f"{app_id}_filtered.csv",
                         mime="text/csv"
                     )
                 else:
-                    st.warning("No reviews found. Try changing the Star filter or Date.")
+                    # Show nothing if no real match is found
+                    st.warning("No matching reviews found for your current filters.")
+                    
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Could not fetch data: {e}")
     else:
-        st.error("Please paste a Play Store link first.")
+        st.error("Please enter a valid Play Store link.")
