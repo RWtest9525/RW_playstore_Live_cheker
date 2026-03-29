@@ -10,7 +10,9 @@ st.set_page_config(page_title="RW play store live cheker", page_icon="📊", lay
 st.markdown("""
     <style>
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; line-height: 1.5 !important; vertical-align: top !important; }
-    .status-done { color: green; font-weight: bold; font-size: 20px; border: 2px solid green; padding: 10px; border-radius: 5px; text-align: center; }
+    .status-done { color: green; font-weight: bold; font-size: 20px; border: 2px solid green; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 20px; }
+    /* Style the navigation buttons */
+    .stButton > button { width: 100% !important; border-radius: 20px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -65,50 +67,44 @@ def process_reviews(res):
             })
     return new_matches
 
-# --- BUTTONS ---
+# --- NAVIGATION BUTTONS WITH ARROWS ---
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("🚀 New Search (Start Set 1)"):
+    # Arrow to Start/Go Back to fresh search
+    if st.button("< Reset & Start Set 1"):
         st.session_state.all_matches = []
         st.session_state.token = None
         st.session_state.is_done = False
         app_id = extract_id(app_url)
-        
         if app_id:
             with st.spinner("Fetching Set 1..."):
                 res, token = reviews(app_id, lang='en', country='us', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
                 st.session_state.token = token
                 st.session_state.all_matches = process_reviews(res)
                 if not token: st.session_state.is_done = True
-        else:
-            st.error("Please enter a valid link.")
+        else: st.error("Please enter a valid link.")
 
 with col2:
+    # Arrow to move to Next Set
     if st.session_state.token and not st.session_state.is_done:
-        if st.button("➕ Fetch Next Set (Deep Scan)"):
+        if st.button("Fetch Next Set >"):
             app_id = extract_id(app_url)
-            with st.spinner("Adding more to your list..."):
+            with st.spinner("Moving to Next Set..."):
                 res, token = reviews(app_id, continuation_token=st.session_state.token)
                 st.session_state.token = token
                 st.session_state.all_matches.extend(process_reviews(res))
                 if not token: st.session_state.is_done = True
 
-# --- STATUS INDICATORS ---
+# --- STATUS ---
 if st.session_state.is_done:
-    st.markdown('<div class="status-done">✅ ALL DONE! No more reviews available to scan.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="status-done">✅ ALL DONE! All available reviews have been scanned.</div>', unsafe_allow_html=True)
 
-# --- DISPLAY RESULTS ---
+# --- RESULTS ---
 if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
-    st.success(f"Combined Results: {len(df)} total reviews matched.")
+    st.success(f"Matches Found: {len(df)}")
     st.dataframe(df, use_container_width=True)
     
-    # This button downloads EVERY review found in all sets combined
     csv_data = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download ALL Matches as One Excel/CSV", 
-        data=csv_data, 
-        file_name=f"full_report_{datetime.now().strftime('%d_%m')}.csv", 
-        mime="text/csv"
-    )
+    st.download_button(label="📥 Download ALL Matches", data=csv_data, file_name="full_report.csv", mime="text/csv")
