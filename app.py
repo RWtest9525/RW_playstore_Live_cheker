@@ -7,7 +7,7 @@ from datetime import datetime
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="📊", layout="wide")
 
-# CSS to fix text wrapping for full comments
+# CSS for full comment visibility
 st.markdown("""
     <style>
     .stDataFrame td {
@@ -25,8 +25,8 @@ st.title("📊 RW play store live cheker")
 st.sidebar.header("Settings")
 app_url = st.sidebar.text_input("Paste Play Store URL:", value="") 
 
-# Stable Slider for choosing how much data to scan
-count = st.sidebar.slider("Number of reviews to scan", 10, 5000, 200)
+# Updated Slider: Max limit is now 1000
+count = st.sidebar.slider("Number of reviews to scan", 10, 1000, 500)
 
 score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1], format_func=lambda x: "Show All" if x is None else f"{x} Stars")
 
@@ -37,7 +37,7 @@ target_date = st.sidebar.date_input("Select Date", datetime.now())
 st.sidebar.subheader("Hint Logic")
 hint_type = st.sidebar.radio("Hint Type", ["Show All", "No Hint (Normal .)", "Custom Symbol"])
 
-# Strictly blank symbol box
+# Blank symbol box
 custom_symbol = ""
 if hint_type == "Custom Symbol":
     custom_symbol = st.sidebar.text_input("Enter Symbol", value="")
@@ -52,7 +52,7 @@ if st.button("🚀 Fetch Real-Time Reviews"):
     if app_id:
         with st.spinner("Fetching data..."):
             try:
-                # Stable 'reviews' method
+                # Stable reviews method with 1000 max limit
                 res, _ = reviews(
                     app_id,
                     lang='en',
@@ -67,18 +67,15 @@ if st.button("🚀 Fetch Real-Time Reviews"):
                     content = r['content']
                     review_date = r['at'].date()
                     
-                    # 1. Date Check
                     if use_date and review_date != target_date:
                         continue
                     
-                    # 2. Hint Check (Fixing the Indentation Error here)
                     if hint_type == "Show All":
                         keep = True
                     elif hint_type == "No Hint (Normal .)":
                         clean_text = content.strip()
                         keep = clean_text.endswith('.') or (len(clean_text) > 0 and clean_text[-1].isalnum())
                     else:
-                        # Custom Symbol Logic
                         if custom_symbol == "":
                             keep = True
                         else:
@@ -100,7 +97,7 @@ if st.button("🚀 Fetch Real-Time Reviews"):
                     csv_data = df.to_csv(index=False).encode('utf-8')
                     st.download_button(label="📥 Download Results", data=csv_data, file_name=f"{app_id}_export.csv", mime="text/csv")
                 else:
-                    st.warning("No matching reviews found for these filters.")
+                    st.warning("No matching reviews found.")
             except Exception as e:
                 st.error(f"Error: {e}")
     else:
