@@ -25,7 +25,7 @@ st.title("📊 RW play store live cheker")
 st.sidebar.header("Settings")
 app_url = st.sidebar.text_input("Paste Play Store URL:", value="") 
 
-# Updated Slider: Max limit is now 1000
+# Slider: Max limit is 1000
 count = st.sidebar.slider("Number of reviews to scan", 10, 1000, 500)
 
 score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1], format_func=lambda x: "Show All" if x is None else f"{x} Stars")
@@ -52,7 +52,6 @@ if st.button("🚀 Fetch Real-Time Reviews"):
     if app_id:
         with st.spinner("Fetching data..."):
             try:
-                # Stable reviews method with 1000 max limit
                 res, _ = reviews(
                     app_id,
                     lang='en',
@@ -64,29 +63,35 @@ if st.button("🚀 Fetch Real-Time Reviews"):
                 
                 final_list = []
                 for r in res:
-                    content = r['content']
+                    content = r['content'].strip()
                     review_date = r['at'].date()
                     
                     if use_date and review_date != target_date:
                         continue
                     
+                    # --- STRICT HINT LOGIC ---
                     if hint_type == "Show All":
                         keep = True
                     elif hint_type == "No Hint (Normal .)":
-                        clean_text = content.strip()
-                        keep = clean_text.endswith('.') or (len(clean_text) > 0 and clean_text[-1].isalnum())
-                    else:
-                        if custom_symbol == "":
-                            keep = True
+                        if len(content) > 0:
+                            # 1. Check if it ends with exactly ONE dot (not two or more)
+                            if content.endswith('.'):
+                                keep = not content.endswith('..')
+                            # 2. Or check if it ends with a normal letter or number
+                            else:
+                                keep = content[-1].isalnum()
                         else:
-                            keep = content.strip().endswith(custom_symbol)
+                            keep = False
+                    else:
+                        # Custom Symbol logic
+                        keep = content.endswith(custom_symbol) if custom_symbol else True
                     
                     if keep:
                         final_list.append({
                             "Date": r['at'].strftime('%Y-%m-%d %H:%M:%S'),
                             "User": r['userName'],
                             "Rating": r['score'],
-                            "Review": content
+                            "Review": r['content']
                         })
 
                 if final_list:
