@@ -10,16 +10,19 @@ st.set_page_config(page_title="RW play store live cheker", page_icon="📊", lay
 st.markdown("""
     <style>
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; line-height: 1.5 !important; vertical-align: top !important; }
+    .status-done { color: green; font-weight: bold; font-size: 20px; border: 2px solid green; padding: 10px; border-radius: 5px; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("📊 RW play store live cheker")
 
-# Initialize session state to store reviews and tokens for "Set 2, 3..."
+# Initialize session state
 if 'all_matches' not in st.session_state:
     st.session_state.all_matches = []
 if 'token' not in st.session_state:
     st.session_state.token = None
+if 'is_done' not in st.session_state:
+    st.session_state.is_done = False
 
 # --- SIDEBAR ---
 st.sidebar.header("Settings")
@@ -39,6 +42,29 @@ def extract_id(url):
     match = re.search(r'id=([a-zA-Z0-9._]+)', url)
     return match.group(1) if match else None
 
+def process_reviews(res):
+    new_matches = []
+    for r in res:
+        content = r['content'].strip()
+        if use_date and r['at'].date() != target_date: continue
+        
+        keep = False
+        if hint_type == "Show All": keep = True
+        elif hint_type == "No Hint (Normal .)":
+            if len(content) > 0:
+                if content.endswith('.'): keep = not content.endswith('..')
+                else: keep = content[-1].isalnum()
+        else: keep = content.endswith(custom_symbol) if custom_symbol else True
+        
+        if keep:
+            new_matches.append({
+                "Date": r['at'].strftime('%Y-%m-%d %H:%M:%S'),
+                "User": r['userName'],
+                "Rating": r['score'],
+                "Review": r['content']
+            })
+    return new_matches
+
 # --- BUTTONS ---
 col1, col2 = st.columns(2)
 
@@ -46,61 +72,43 @@ with col1:
     if st.button("🚀 New Search (Start Set 1)"):
         st.session_state.all_matches = []
         st.session_state.token = None
+        st.session_state.is_done = False
         app_id = extract_id(app_url)
         
         if app_id:
             with st.spinner("Fetching Set 1..."):
                 res, token = reviews(app_id, lang='en', country='us', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
                 st.session_state.token = token
-                
-                for r in res:
-                    content = r['content'].strip()
-                    if use_date and r['at'].date() != target_date: continue
-                    
-                    keep = False
-                    if hint_type == "Show All": keep = True
-                    elif hint_type == "No Hint (Normal .)":
-                        if len(content) > 0:
-                            if content.endswith('.'): keep = not content.endswith('..')
-                            else: keep = content[-1].isalnum()
-                    else: keep = content.endswith(custom_symbol) if custom_symbol else True
-                    
-                    if keep:
-                        st.session_state.all_matches.append({"Date": r['at'].strftime('%Y-%m-%d %H:%M:%S'), "User": r['userName'], "Rating": r['score'], "Review": r['content']})
+                st.session_state.all_matches = process_reviews(res)
+                if not token: st.session_state.is_done = True
         else:
             st.error("Please enter a valid link.")
 
 with col2:
-    # Only show "Fetch Next Set" if we have a token from a previous search
-    if st.session_state.token:
+    if st.session_state.token and not st.session_state.is_done:
         if st.button("➕ Fetch Next Set (Deep Scan)"):
             app_id = extract_id(app_url)
-            with st.spinner("Fetching more reviews..."):
+            with st.spinner("Adding more to your list..."):
                 res, token = reviews(app_id, continuation_token=st.session_state.token)
                 st.session_state.token = token
-                
-                for r in res:
-                    content = r['content'].strip()
-                    if use_date and r['at'].date() != target_date: continue
-                    
-                    keep = False
-                    if hint_type == "Show All": keep = True
-                    elif hint_type == "No Hint (Normal .)":
-                        if len(content) > 0:
-                            if content.endswith('.'): keep = not content.endswith('..')
-                            else: keep = content[-1].isalnum()
-                    else: keep = content.endswith(custom_symbol) if custom_symbol else True
-                    
-                    if keep:
-                        st.session_state.all_matches.append({"Date": r['at'].strftime('%Y-%m-%d %H:%M:%S'), "User": r['userName'], "Rating": r['score'], "Review": r['content']})
+                st.session_state.all_matches.extend(process_reviews(res))
+                if not token: st.session_state.is_done = True
+
+# --- STATUS INDICATORS ---
+if st.session_state.is_done:
+    st.markdown('<div class="status-done">✅ ALL DONE! No more reviews available to scan.</div>', unsafe_allow_html=True)
 
 # --- DISPLAY RESULTS ---
 if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
-    st.success(f"Total Matches Found so far: {len(df)}")
+    st.success(f"Combined Results: {len(df)} total reviews matched.")
     st.dataframe(df, use_container_width=True)
     
+    # This button downloads EVERY review found in all sets combined
     csv_data = df.to_csv(index=False).encode('utf-8')
-    st.download_button(label="📥 Download Results", data=csv_data, file_name="export.csv", mime="text/csv")
-elif app_url:
-    st.info("No matches found in this set. Try clicking 'Fetch Next Set' to look further back in time.")
+    st.download_button(
+        label="📥 Download ALL Matches as One Excel/CSV", 
+        data=csv_data, 
+        file_name=f"full_report_{datetime.now().strftime('%d_%m')}.csv", 
+        mime="text/csv"
+    )
