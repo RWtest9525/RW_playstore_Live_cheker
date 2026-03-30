@@ -9,19 +9,16 @@ import os
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# --- IMPROVED CUSTOM CSS FOR SINGLE-LINE HEADER ---
+# --- CLEAN CSS FOR SINGLE LINE HEADER ---
 st.markdown("""
     <style>
-    /* Force the header container to stay in one line */
-    .header-container {
-        display: flex;
-        align-items: center;
-        flex-wrap: nowrap;
-        gap: 15px;
-        margin-bottom: 20px;
+    /* 1. Remove the default giant padding at the top of the page */
+    .block-container {
+        padding-top: 2rem !important;
     }
     
-    .header-logo img {
+    /* 2. Style the Logo */
+    [data-testid="stImage"] img {
         border-radius: 8px;
         box-shadow: 0 4px 10px rgba(0,255,0,0.2);
         object-fit: contain;
@@ -29,58 +26,30 @@ st.markdown("""
         height: 60px !important;
     }
     
-    .header-title {
-        margin: 0 !important;
-        padding: 0 !important;
-        font-size: 35px !important;
-        white-space: nowrap;
+    /* 3. Force vertical alignment for the header columns */
+    [data-testid="column"] {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
     }
 
-    /* Table & Data Styling */
-    .stDataFrame td { 
-        white-space: normal !important; 
-        word-wrap: break-word !important; 
-        line-height: 1.5 !important; 
-    }
-    
-    .status-done { 
-        color: #2ecc71; 
-        font-weight: bold; 
-        font-size: 22px; 
-        border: 2px solid #2ecc71; 
-        padding: 15px; 
-        border-radius: 10px; 
-        text-align: center; 
-        margin: 20px 0;
-        background-color: rgba(46, 204, 113, 0.1);
-    }
-
-    .stButton > button { 
-        width: 100% !important; 
-        border-radius: 8px !important; 
-        font-weight: bold !important;
-    }
+    /* 4. Table & UI Cleanup */
+    .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; line-height: 1.5 !important; }
+    .status-done { color: #2ecc71; font-weight: bold; font-size: 22px; border: 2px solid #2ecc71; padding: 15px; border-radius: 10px; text-align: center; margin: 20px 0; background-color: rgba(46, 204, 113, 0.1); }
+    .stButton > button { width: 100% !important; border-radius: 8px !important; font-weight: bold !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER SECTION (SINGLE LINE FIX) ---
+# --- SINGLE HEADER SECTION ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    st.markdown(f"""
-        <div class="header-container">
-            <div class="header-logo">
-                <img src="data:image/png;base64,{st.image(logo_path).data if False else ''}" style="display:none;">
-            </div>
-            <h1 class="header-title">RW play store live cheker</h1>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # We use standard streamlit calls but wrap them in a container logic
-    col_l, col_r = st.columns([1, 10])
+    # This single column setup prevents the "double title" look
+    col_l, col_r = st.columns([1, 10]) 
     with col_l:
         st.image(logo_path)
     with col_r:
-        st.markdown("<h1 style='margin:0; font-size: 35px; white-space: nowrap;'>RW play store live cheker</h1>", unsafe_allow_html=True)
+        # Combined Title: Only ONE title allowed here
+        st.markdown("<h1 style='margin:0; padding-left:10px; font-size: 38px; white-space: nowrap;'>RW play store live cheker</h1>", unsafe_allow_html=True)
 else:
     st.title("📊 RW play store live cheker")
 
@@ -96,8 +65,7 @@ if 'is_done' not in st.session_state:
 st.sidebar.header("⚙️ Configuration")
 app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
 count = st.sidebar.slider("Batch Size", 10, 1000, 500)
-score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1], 
-                                    format_func=lambda x: "Show All" if x is None else f"{x} Stars")
+score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1], format_func=lambda x: "Show All" if x is None else f"{x} Stars")
 
 st.sidebar.subheader("📅 Date Filter")
 use_date = st.sidebar.checkbox("Filter by Specific Date", value=True)
@@ -184,11 +152,9 @@ if st.session_state.all_matches:
     st.sidebar.subheader("📋 Quick Copy Results")
     app_id_label = extract_id(app_url)
     date_display = target_date.strftime('%d %B %Y')
-    
     copy_text = f"{app_id_label} ({date_display}) :\n"
     for i, m in enumerate(st.session_state.all_matches, 1):
         copy_text += f"{i}. {m['User']}: {m['Review']}\n"
-    
     st.sidebar.text_area("Select All & Copy:", value=copy_text, height=350)
 
 # --- RESULTS DISPLAY ---
@@ -199,6 +165,5 @@ if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
     st.success(f"Found {len(df)} matching reviews")
     st.dataframe(df, use_container_width=True)
-    
     csv_data = df.to_csv(index=False).encode('utf-8')
     st.download_button(label="📥 Download Report (CSV)", data=csv_data, file_name=f"Review_Report_{target_date}.csv")
