@@ -9,8 +9,23 @@ import os
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
+# --- CUSTOM CSS FOR CIRCULAR LOGO & ALIGNMENT ---
 st.markdown("""
     <style>
+    /* Make the logo circular and fit well */
+    [data-testid="stImage"] img {
+        border-radius: 50%;
+        border: 2px solid #4CAF50;
+        object-fit: cover;
+        width: 70px !important;
+        height: 70px !important;
+    }
+    /* Align columns vertically so text is centered with logo */
+    [data-testid="column"] {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+    }
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; line-height: 1.5 !important; vertical-align: top !important; }
     .status-done { color: green; font-weight: bold; font-size: 20px; border: 2px solid green; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 20px; }
     .stButton > button { width: 100% !important; border-radius: 20px !important; }
@@ -20,11 +35,11 @@ st.markdown("""
 # --- LOGO & TITLE SECTION ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    col_l, col_r = st.columns([1, 12])
+    col_l, col_r = st.columns([1, 10]) 
     with col_l:
-        st.image(logo_path, width=70)
+        st.image(logo_path)
     with col_r:
-        st.title("RW play store live cheker")
+        st.markdown("<h1 style='margin:0; padding-left:10px;'>RW play store live cheker</h1>", unsafe_allow_html=True)
 else:
     st.title("📊 RW play store live cheker")
 
@@ -62,7 +77,7 @@ def process_reviews(res):
     new_matches = []
     ist = pytz.timezone('Asia/Kolkata')
     for r in res:
-        # CONVERT to India Time (IST)
+        # Convert to India Time (IST)
         review_time_utc = r['at'].replace(tzinfo=pytz.utc)
         review_time_ist = review_time_utc.astimezone(ist)
         review_date_ist = review_time_ist.date()
@@ -129,7 +144,6 @@ if st.session_state.all_matches:
     app_id_label = extract_id(app_url)
     date_display = target_date.strftime('%d %B %Y')
     
-    # Final Format: app.id (Date) :
     copy_text = f"{app_id_label} ({date_display}) :\n"
     for i, m in enumerate(st.session_state.all_matches, 1):
         copy_text += f"{i}. {m['User']}: {m['Review']}\n"
