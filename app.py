@@ -4,9 +4,10 @@ import re
 from google_play_scraper import Sort, reviews
 from datetime import datetime
 import pytz
+import os
 
 # Page Config
-st.set_page_config(page_title="RW play store live cheker", page_icon="📊", layout="wide")
+st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
 st.markdown("""
     <style>
@@ -16,7 +17,16 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("📊 RW play store live cheker")
+# --- LOGO & TITLE SECTION ---
+logo_path = "logo.png"
+if os.path.exists(logo_path):
+    col_l, col_r = st.columns([1, 12])
+    with col_l:
+        st.image(logo_path, width=70)
+    with col_r:
+        st.title("RW play store live cheker")
+else:
+    st.title("📊 RW play store live cheker")
 
 # Initialize session state
 if 'all_matches' not in st.session_state:
@@ -28,7 +38,7 @@ if 'is_done' not in st.session_state:
 
 # --- SIDEBAR ---
 st.sidebar.header("Settings")
-app_url = st.sidebar.text_input("Paste Play Store URL:", value="")
+app_url = st.sidebar.text_input("Paste Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
 count = st.sidebar.slider("Batch Size (Per Set)", 10, 1000, 500)
 score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1], 
                                     format_func=lambda x: "Show All" if x is None else f"{x} Stars")
@@ -52,7 +62,7 @@ def process_reviews(res):
     new_matches = []
     ist = pytz.timezone('Asia/Kolkata')
     for r in res:
-        # CONVERT to IST
+        # CONVERT to India Time (IST)
         review_time_utc = r['at'].replace(tzinfo=pytz.utc)
         review_time_ist = review_time_utc.astimezone(ist)
         review_date_ist = review_time_ist.date()
@@ -75,7 +85,7 @@ def process_reviews(res):
 
         if keep:
             new_matches.append({
-                "Date": review_time_ist.strftime('%Y-%m-%d %H:%M:%S'), # FULL TIME RESTORED
+                "Date": review_time_ist.strftime('%Y-%m-%d %H:%M:%S'),
                 "User": r['userName'],
                 "Rating": r['score'],
                 "Review": r['content']
@@ -92,7 +102,7 @@ with col1:
         st.session_state.is_done = False
         app_id = extract_id(app_url)
         if app_url:
-            with st.spinner("Fetching..."):
+            with st.spinner("Fetching Set 1..."):
                 res, token = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
                 st.session_state.token = token
                 st.session_state.all_matches = process_reviews(res)
@@ -112,22 +122,16 @@ with col2:
                 if not token:
                     st.session_state.is_done = True
 
-# --- COPY FEATURE (UPPER PART OF SIDEBAR) ---
+# --- COPY FEATURE ---
 if st.session_state.all_matches:
-    # We move this to the top of the sidebar results
     st.sidebar.markdown("---")
     st.sidebar.subheader("📋 Quick Copy")
-    
     app_id_label = extract_id(app_url)
-    # Use the date from the first match to show the full time in the header if you want, 
-    # or keep it as the selected date.
     date_display = target_date.strftime('%d %B %Y')
     
-    # Header format: app.id (Date) :
+    # Final Format: app.id (Date) :
     copy_text = f"{app_id_label} ({date_display}) :\n"
-    
     for i, m in enumerate(st.session_state.all_matches, 1):
-        # Including numbering, User, and the Review
         copy_text += f"{i}. {m['User']}: {m['Review']}\n"
     
     st.sidebar.text_area("Select All (Ctrl+A) and Copy (Ctrl+C):", value=copy_text, height=400)
@@ -139,7 +143,6 @@ if st.session_state.is_done:
 if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
     st.success(f"Matches Found: {len(df)}")
-    # Display the full timing in the table as well
     st.dataframe(df, use_container_width=True)
     csv_data = df.to_csv(index=False).encode('utf-8')
     st.download_button(label="📥 Download CSV", data=csv_data, file_name="report.csv")
