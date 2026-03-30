@@ -25,8 +25,6 @@ if 'token' not in st.session_state:
     st.session_state.token = None
 if 'is_done' not in st.session_state:
     st.session_state.is_done = False
-if 'app_name' not in st.session_state:
-    st.session_state.app_name = "App"
 
 # --- SIDEBAR ---
 st.sidebar.header("Settings")
@@ -48,12 +46,13 @@ custom_symbol = st.sidebar.text_input("Enter Symbol", value="!") if hint_type ==
 
 def extract_id(url):
     match = re.search(r'id=([a-zA-Z0-9._]+)', url)
-    return match.group(1) if match else None
+    return match.group(1) if match else "App"
 
 def process_reviews(res):
     new_matches = []
     ist = pytz.timezone('Asia/Kolkata')
     for r in res:
+        # CONVERT to IST
         review_time_utc = r['at'].replace(tzinfo=pytz.utc)
         review_time_ist = review_time_utc.astimezone(ist)
         review_date_ist = review_time_ist.date()
@@ -76,7 +75,7 @@ def process_reviews(res):
 
         if keep:
             new_matches.append({
-                "Date": review_date_ist.strftime('%Y-%m-%d'),
+                "Date": review_time_ist.strftime('%Y-%m-%d %H:%M:%S'), # FULL TIME RESTORED
                 "User": r['userName'],
                 "Rating": r['score'],
                 "Review": r['content']
@@ -92,7 +91,7 @@ with col1:
         st.session_state.token = None
         st.session_state.is_done = False
         app_id = extract_id(app_url)
-        if app_id:
+        if app_url:
             with st.spinner("Fetching..."):
                 res, token = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
                 st.session_state.token = token
@@ -113,22 +112,25 @@ with col2:
                 if not token:
                     st.session_state.is_done = True
 
-# --- COPY FEATURE ---
+# --- COPY FEATURE (UPPER PART OF SIDEBAR) ---
 if st.session_state.all_matches:
+    # We move this to the top of the sidebar results
     st.sidebar.markdown("---")
     st.sidebar.subheader("📋 Quick Copy")
     
-    # Format the text
-    date_str = target_date.strftime('%d %B %Y')
-    # Try to get app ID for the header
-    app_id_label = extract_id(app_url) if app_url else "App"
+    app_id_label = extract_id(app_url)
+    # Use the date from the first match to show the full time in the header if you want, 
+    # or keep it as the selected date.
+    date_display = target_date.strftime('%d %B %Y')
     
-    formatted_text = f"{app_id_label} ({date_str}) :\n"
+    # Header format: app.id (Date) :
+    copy_text = f"{app_id_label} ({date_display}) :\n"
+    
     for i, m in enumerate(st.session_state.all_matches, 1):
-        formatted_text += f"{i}. {m['User']}: {m['Review']}\n"
+        # Including numbering, User, and the Review
+        copy_text += f"{i}. {m['User']}: {m['Review']}\n"
     
-    st.sidebar.text_area("Copy this text:", value=formatted_text, height=300)
-    st.sidebar.info("Select all and copy (Ctrl+C) the text above.")
+    st.sidebar.text_area("Select All (Ctrl+A) and Copy (Ctrl+C):", value=copy_text, height=400)
 
 # --- STATUS & RESULTS ---
 if st.session_state.is_done:
@@ -137,6 +139,7 @@ if st.session_state.is_done:
 if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
     st.success(f"Matches Found: {len(df)}")
+    # Display the full timing in the table as well
     st.dataframe(df, use_container_width=True)
     csv_data = df.to_csv(index=False).encode('utf-8')
     st.download_button(label="📥 Download CSV", data=csv_data, file_name="report.csv")
