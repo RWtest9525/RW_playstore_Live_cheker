@@ -3,7 +3,7 @@ import pandas as pd
 import re
 from google_play_scraper import Sort, reviews
 from datetime import datetime
-import pytz  # Added for timezone handling
+import pytz
 
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="📊", layout="wide")
@@ -53,7 +53,7 @@ score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1],
 st.sidebar.subheader("Date Filter")
 use_date = st.sidebar.checkbox("Filter by Specific Date")
 
-# FIX: Set default date to India Standard Time (IST)
+# Set Timezone to India (IST)
 ist = pytz.timezone('Asia/Kolkata')
 current_ist_time = datetime.now(ist)
 target_date = st.sidebar.date_input("Select Date", current_ist_time)
@@ -68,13 +68,19 @@ def extract_id(url):
 
 def process_reviews(res):
     new_matches = []
+    ist = pytz.timezone('Asia/Kolkata')
+    
     for r in res:
-        # Get the date of the review
-        review_date = r['at'].date()
+        # CONVERT review time to India Time
+        # Google returns naive datetime, we assume it's UTC then convert to IST
+        review_time_utc = r['at'].replace(tzinfo=pytz.utc)
+        review_time_ist = review_time_utc.astimezone(ist)
+        review_date_ist = review_time_ist.date()
+        
         content = r['content'].strip()
 
-        # FIX: Strict date comparison
-        if use_date and review_date != target_date:
+        # Compare India Date to User Selected Date
+        if use_date and review_date_ist != target_date:
             continue
 
         keep = False
@@ -91,7 +97,7 @@ def process_reviews(res):
 
         if keep:
             new_matches.append({
-                "Date": r['at'].strftime('%Y-%m-%d %H:%M:%S'),
+                "Date": review_time_ist.strftime('%Y-%m-%d %H:%M:%S'),
                 "User": r['userName'],
                 "Rating": r['score'],
                 "Review": r['content']
@@ -109,7 +115,7 @@ with col1:
         app_id = extract_id(app_url)
         if app_id:
             with st.spinner("Fetching Set 1..."):
-                res, token = reviews(app_id, lang='en', country='us', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
+                res, token = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
                 st.session_state.token = token
                 st.session_state.all_matches = process_reviews(res)
                 if not token:
