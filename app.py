@@ -22,6 +22,7 @@ st.markdown("""
         gap: 15px;
         margin-bottom: 20px;
         width: 100%;
+        overflow: hidden; /* Prevents text from leaking out */
     }
     
     .logo-container img {
