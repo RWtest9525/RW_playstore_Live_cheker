@@ -1,4 +1,4 @@
-google-play-scraper
+streamlit
 pandas
-streamlit>=1.31.0
-altair<5
+google-play-scraper
+pytz
