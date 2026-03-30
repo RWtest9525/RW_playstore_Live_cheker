@@ -9,54 +9,14 @@ import os
 # 1. Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# 2. CSS FIX: Logo "Halka Down" and Same Position as Header
-st.markdown("""
-    <style>
-    /* Remove default top padding */
-    .block-container { padding-top: 1.5rem !important; }
-    
-    /* Header Container - Single Row */
-    .header-row {
-        display: flex;
-        align-items: center;
-        margin-bottom: 20px;
-        gap: 15px;
-    }
-
-    /* Logo - Shifted Down (Niche) for perfect alignment */
-    .header-row img {
-        height: 55px !important;
-        width: auto !important;
-        margin-top: 12px; /* Logo ko halka down karne ke liye */
-        border-radius: 5px;
-        flex-shrink: 0;
-    }
-
-    /* Title - Same line as logo */
-    .header-row h1 {
-        margin: 0 !important;
-        padding: 0 !important;
-        font-size: clamp(20px, 4vw, 38px) !important;
-        white-space: nowrap;
-        color: white;
-    }
-
-    .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
-    .stButton > button { width: 100% !important; font-weight: bold !important; border-radius: 8px !important; }
-    .status-done { color: #2ecc71; font-weight: bold; font-size: 20px; border: 2px solid #2ecc71; padding: 10px; border-radius: 10px; text-align: center; background-color: rgba(46, 204, 113, 0.1); }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- HEADER SECTION ---
+# 2. Simple Header (Restored to your original style)
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    # Using raw HTML to force the "Halka Down" position
-    st.markdown(f"""
-        <div class="header-row">
-            <img src="https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png">
-            <h1>RW play store live cheker</h1>
-        </div>
-    """, unsafe_allow_html=True)
+    col_l, col_r = st.columns([1, 10])
+    with col_l:
+        st.image(logo_path, width=70)
+    with col_r:
+        st.title("RW play store live cheker")
 else:
     st.title("📊 RW play store live cheker")
 
@@ -68,7 +28,7 @@ if 'token' not in st.session_state:
 if 'is_done' not in st.session_state:
     st.session_state.is_done = False
 
-# --- SIDEBAR ---
+# --- SIDEBAR SETTINGS ---
 st.sidebar.header("⚙️ Configuration")
 app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
 count = st.sidebar.slider("Batch Size", 10, 1000, 500)
@@ -93,6 +53,7 @@ def process_reviews(res):
     new_matches = []
     ist_tz = pytz.timezone('Asia/Kolkata')
     for r in res:
+        # CONVERT to India Time (IST)
         review_time_utc = r['at'].replace(tzinfo=pytz.utc)
         review_time_ist = review_time_utc.astimezone(ist_tz)
         review_date_ist = review_time_ist.date()
@@ -164,7 +125,7 @@ if st.session_state.all_matches:
 
 # --- RESULTS & DOWNLOAD ---
 if st.session_state.is_done:
-    st.markdown('<div class="status-done">✅ ALL REVIEWS SCANNED</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color: #2ecc71; font-weight: bold; font-size: 20px; border: 2px solid #2ecc71; padding: 10px; border-radius: 10px; text-align: center; background-color: rgba(46, 204, 113, 0.1);">✅ ALL REVIEWS SCANNED</div>', unsafe_allow_html=True)
 
 if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
