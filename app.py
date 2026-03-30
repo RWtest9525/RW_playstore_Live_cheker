@@ -9,34 +9,37 @@ import os
 # 1. Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# 2. FIXED HEADER CSS (Single Line, Full Logo, Responsive)
+# 2. FIXED CSS (Logo on Top, Title Below)
 st.markdown("""
     <style>
-    .block-container { padding-top: 1.5rem !important; }
+    .block-container { padding-top: 2rem !important; }
     
-    /* Header Container - Forces logo and text together */
-    .header-box {
+    /* Header Container - Stacked Vertical */
+    .header-container {
         display: flex;
+        flex-direction: column;
         align-items: center;
-        margin-bottom: 25px;
-        gap: 15px;
+        justify-content: center;
+        text-align: center;
+        margin-bottom: 30px;
+        width: 100%;
     }
 
-    /* Logo Styling - No Cropping */
-    .header-box img {
-        height: 60px !important;
+    /* Logo Styling - Centered and Full Size */
+    .header-container img {
+        height: 80px !important;
         width: auto !important;
-        border-radius: 5px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        margin-bottom: 10px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
 
-    /* Title Styling - No Wrap */
-    .header-box h1 {
+    /* Title Styling - Centered Below Logo */
+    .header-container h1 {
         margin: 0 !important;
-        padding: 0 !important;
-        font-size: clamp(22px, 4vw, 38px) !important;
-        white-space: nowrap;
+        font-size: clamp(24px, 5vw, 45px) !important;
         color: white;
+        font-weight: bold;
     }
 
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
@@ -45,16 +48,17 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- DISPLAY LOGO AND TITLE (LOCAL FILE METHOD) ---
+# --- DISPLAY LOGO ON TOP & TITLE BELOW ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    col_l, col_r = st.columns([1, 10]) # Using columns as a backup for flex
-    with col_l:
-        st.image(logo_path, width=70)
-    with col_r:
-        st.markdown("<h1 style='margin-top: 10px;'>RW play store live cheker</h1>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class="header-container">
+            <img src="https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png">
+            <h1>RW play store live cheker</h1>
+        </div>
+    """, unsafe_allow_html=True)
 else:
-    st.title("📊 RW play store live cheker")
+    st.markdown("<div class='header-container'><h1>📊 RW play store live cheker</h1></div>", unsafe_allow_html=True)
 
 # 3. Initialize session state
 if 'all_matches' not in st.session_state:
@@ -167,7 +171,7 @@ if st.session_state.all_matches:
     st.success(f"Matches: {len(df)}")
     st.dataframe(df, use_container_width=True)
     
-    # DOWNLOAD FILENAME: AppID_Date.csv
+    # DOWNLOAD FILENAME FIX
     app_id_name = extract_id(app_url)
     formatted_date = target_date.strftime('%Y-%m-%d')
     final_filename = f"{app_id_name}_{formatted_date}.csv"
