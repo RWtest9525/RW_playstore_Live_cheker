@@ -9,47 +9,50 @@ import os
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# --- CLEAN CSS FOR SINGLE LINE HEADER ---
+# --- FIXED CSS: NO CROPPING & DYNAMIC FILENAME ---
 st.markdown("""
     <style>
-    /* 1. Remove the default giant padding at the top of the page */
-    .block-container {
-        padding-top: 2rem !important;
-    }
+    /* Remove default padding */
+    .block-container { padding-top: 1.5rem !important; }
     
-    /* 2. Style the Logo */
+    /* FIX: No more cut-off logo. Original square/rect shape preserved */
     [data-testid="stImage"] img {
-        border-radius: 8px;
-        box-shadow: 0 4px 10px rgba(0,255,0,0.2);
-        object-fit: contain;
-        width: 60px !important;
-        height: 60px !important;
+        border-radius: 0% !important; /* Forces square shape */
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        object-fit: contain !important;
+        width: auto !important;
+        max-height: 70px !important;
     }
     
-    /* 3. Force vertical alignment for the header columns */
+    /* Align Logo and Title in one perfect line */
     [data-testid="column"] {
         display: flex;
         align-items: center;
         justify-content: flex-start;
     }
 
-    /* 4. Table & UI Cleanup */
-    .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; line-height: 1.5 !important; }
-    .status-done { color: #2ecc71; font-weight: bold; font-size: 22px; border: 2px solid #2ecc71; padding: 15px; border-radius: 10px; text-align: center; margin: 20px 0; background-color: rgba(46, 204, 113, 0.1); }
-    .stButton > button { width: 100% !important; border-radius: 8px !important; font-weight: bold !important; }
+    .header-text {
+        margin: 0 !important;
+        padding-left: 15px;
+        font-size: 38px !important;
+        font-weight: bold;
+        white-space: nowrap;
+    }
+
+    .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
+    .status-done { color: #2ecc71; font-weight: bold; font-size: 20px; border: 2px solid #2ecc71; padding: 10px; border-radius: 10px; text-align: center; margin: 15px 0; background-color: rgba(46, 204, 113, 0.1); }
+    .stButton > button { width: 100% !important; border-radius: 8px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SINGLE HEADER SECTION ---
+# --- HEADER SECTION ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    # This single column setup prevents the "double title" look
     col_l, col_r = st.columns([1, 10]) 
     with col_l:
         st.image(logo_path)
     with col_r:
-        # Combined Title: Only ONE title allowed here
-        st.markdown("<h1 style='margin:0; padding-left:10px; font-size: 38px; white-space: nowrap;'>RW play store live cheker</h1>", unsafe_allow_html=True)
+        st.markdown("<div class='header-text'>RW play store live cheker</div>", unsafe_allow_html=True)
 else:
     st.title("📊 RW play store live cheker")
 
@@ -61,7 +64,7 @@ if 'token' not in st.session_state:
 if 'is_done' not in st.session_state:
     st.session_state.is_done = False
 
-# --- SIDEBAR SETTINGS ---
+# --- SIDEBAR ---
 st.sidebar.header("⚙️ Configuration")
 app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
 count = st.sidebar.slider("Batch Size", 10, 1000, 500)
@@ -165,5 +168,16 @@ if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
     st.success(f"Found {len(df)} matching reviews")
     st.dataframe(df, use_container_width=True)
+    
+    # FIX: Export filename as "AppID_Date.csv"
+    app_id_label = extract_id(app_url)
+    file_date = target_date.strftime('%Y-%m-%d')
+    dynamic_filename = f"{app_id_label}_{file_date}.csv"
+    
     csv_data = df.to_csv(index=False).encode('utf-8')
-    st.download_button(label="📥 Download Report (CSV)", data=csv_data, file_name=f"Review_Report_{target_date}.csv")
+    st.download_button(
+        label="📥 Download Report (CSV)", 
+        data=csv_data, 
+        file_name=dynamic_filename, # Dynamic name used here
+        mime='text/csv'
+    )
