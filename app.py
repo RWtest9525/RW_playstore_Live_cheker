@@ -9,37 +9,36 @@ import os
 # 1. Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# 2. FIXED CSS (Logo on Top, Title Below)
+# 2. CSS FIX: Logo "Halka Down" and Same Position as Header
 st.markdown("""
     <style>
-    .block-container { padding-top: 2rem !important; }
+    /* Remove default top padding */
+    .block-container { padding-top: 1.5rem !important; }
     
-    /* Header Container - Stacked Vertical */
-    .header-container {
+    /* Header Container - Single Row */
+    .header-row {
         display: flex;
-        flex-direction: column;
         align-items: center;
-        justify-content: center;
-        text-align: center;
-        margin-bottom: 30px;
-        width: 100%;
+        margin-bottom: 20px;
+        gap: 15px;
     }
 
-    /* Logo Styling - Centered and Full Size */
-    .header-container img {
-        height: 80px !important;
+    /* Logo - Shifted Down (Niche) for perfect alignment */
+    .header-row img {
+        height: 55px !important;
         width: auto !important;
-        margin-bottom: 10px;
-        border-radius: 10px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        margin-top: 12px; /* Logo ko halka down karne ke liye */
+        border-radius: 5px;
+        flex-shrink: 0;
     }
 
-    /* Title Styling - Centered Below Logo */
-    .header-container h1 {
+    /* Title - Same line as logo */
+    .header-row h1 {
         margin: 0 !important;
-        font-size: clamp(24px, 5vw, 45px) !important;
+        padding: 0 !important;
+        font-size: clamp(20px, 4vw, 38px) !important;
+        white-space: nowrap;
         color: white;
-        font-weight: bold;
     }
 
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
@@ -48,17 +47,18 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- DISPLAY LOGO ON TOP & TITLE BELOW ---
+# --- HEADER SECTION ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
+    # Using raw HTML to force the "Halka Down" position
     st.markdown(f"""
-        <div class="header-container">
+        <div class="header-row">
             <img src="https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png">
             <h1>RW play store live cheker</h1>
         </div>
     """, unsafe_allow_html=True)
 else:
-    st.markdown("<div class='header-container'><h1>📊 RW play store live cheker</h1></div>", unsafe_allow_html=True)
+    st.title("📊 RW play store live cheker")
 
 # 3. Initialize session state
 if 'all_matches' not in st.session_state:
@@ -162,7 +162,7 @@ if st.session_state.all_matches:
         copy_text += f"{i}. {m['User']}: {m['Review']}\n"
     st.sidebar.text_area("Select All & Copy:", value=copy_text, height=300)
 
-# --- RESULTS & DYNAMIC DOWNLOAD ---
+# --- RESULTS & DOWNLOAD ---
 if st.session_state.is_done:
     st.markdown('<div class="status-done">✅ ALL REVIEWS SCANNED</div>', unsafe_allow_html=True)
 
@@ -171,7 +171,7 @@ if st.session_state.all_matches:
     st.success(f"Matches: {len(df)}")
     st.dataframe(df, use_container_width=True)
     
-    # DOWNLOAD FILENAME FIX
+    # Filename: AppID_Date.csv
     app_id_name = extract_id(app_url)
     formatted_date = target_date.strftime('%Y-%m-%d')
     final_filename = f"{app_id_name}_{formatted_date}.csv"
