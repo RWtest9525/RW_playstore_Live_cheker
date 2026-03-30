@@ -6,63 +6,56 @@ from datetime import datetime
 import pytz
 import os
 
-# Page Config
+# 1. Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# --- ADVANCED CSS FOR RESPONSIVE HEADER & LOGO ---
+# 2. THE ULTIMATE HEADER FIX (Single Line, No Cut-off)
 st.markdown("""
     <style>
-    /* 1. Reset padding for a cleaner look */
+    /* Remove top gap */
     .block-container { padding-top: 1rem !important; }
-
-    /* 2. FLEXBOX HEADER: This ensures logo and text adjust to any screen size */
-    .header-wrapper {
+    
+    /* Header Container */
+    .custom-header {
         display: flex;
         align-items: center;
-        gap: 15px;
-        margin-bottom: 20px;
         width: 100%;
-        overflow: hidden; /* Prevents text from leaking out */
-    }
-    
-    .logo-container img {
-        height: 60px !important;
-        width: auto !important;
-        border-radius: 8px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        flex-shrink: 0; /* Prevents logo from being squashed */
+        margin-bottom: 20px;
     }
 
-    .title-text {
-        font-size: clamp(20px, 5vw, 40px); /* Responsive font: shrinks on small screens */
-        font-weight: bold;
-        margin: 0;
-        line-height: 1.2;
+    /* Logo - No Cropping, Full View */
+    .custom-header img {
+        height: 65px !important;
+        width: auto !important;
+        margin-right: 20px;
+        border-radius: 5px;
+    }
+
+    /* Title - Single Line, Responsive */
+    .custom-header h1 {
+        margin: 0 !important;
+        font-size: clamp(24px, 4vw, 42px) !important;
+        white-space: nowrap;
         color: white;
     }
 
-    /* Table & Status Styling */
+    /* Table & Button Styling */
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
-    .status-done { color: #2ecc71; font-weight: bold; font-size: 20px; border: 2px solid #2ecc71; padding: 10px; border-radius: 10px; text-align: center; margin: 15px 0; background-color: rgba(46, 204, 113, 0.1); }
-    .stButton > button { width: 100% !important; border-radius: 8px !important; font-weight: bold !important; }
+    .stButton > button { width: 100% !important; font-weight: bold !important; border-radius: 8px !important; }
+    .status-done { color: #2ecc71; font-weight: bold; font-size: 20px; border: 2px solid #2ecc71; padding: 10px; border-radius: 10px; text-align: center; background-color: rgba(46, 204, 113, 0.1); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SINGLE RESPONSIVE HEADER ---
-logo_path = "logo.png"
-if os.path.exists(logo_path):
-    st.markdown(f"""
-        <div class="header-wrapper">
-            <div class="logo-container">
-                <img src="https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png">
-            </div>
-            <h1 class="title-text">RW play store live cheker</h1>
-        </div>
+# --- DISPLAY HEADER ---
+logo_url = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
+st.markdown(f"""
+    <div class="custom-header">
+        <img src="{logo_url}">
+        <h1>RW play store live cheker</h1>
+    </div>
     """, unsafe_allow_html=True)
-else:
-    st.title("📊 RW play store live cheker")
 
-# Initialize session state
+# 3. Initialize session state
 if 'all_matches' not in st.session_state:
     st.session_state.all_matches = []
 if 'token' not in st.session_state:
@@ -93,10 +86,10 @@ def extract_id(url):
 
 def process_reviews(res):
     new_matches = []
-    ist = pytz.timezone('Asia/Kolkata')
+    ist_tz = pytz.timezone('Asia/Kolkata')
     for r in res:
         review_time_utc = r['at'].replace(tzinfo=pytz.utc)
-        review_time_ist = review_time_utc.astimezone(ist)
+        review_time_ist = review_time_utc.astimezone(ist_tz)
         review_date_ist = review_time_ist.date()
         content = r['content'].strip()
 
@@ -124,7 +117,7 @@ def process_reviews(res):
             })
     return new_matches
 
-# --- MAIN ACTION BUTTONS ---
+# --- BUTTONS ---
 st.markdown("---")
 col1, col2 = st.columns(2)
 
@@ -139,51 +132,44 @@ with col1:
                 res, token = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
                 st.session_state.token = token
                 st.session_state.all_matches = process_reviews(res)
-                if not token:
-                    st.session_state.is_done = True
+                if not token: st.session_state.is_done = True
         else:
-            st.error("Please enter a valid link.")
+            st.error("Invalid URL")
 
 with col2:
     if st.session_state.token and not st.session_state.is_done:
         if st.button("Next Batch ➡️"):
             app_id = extract_id(app_url)
-            with st.spinner("Loading Next Set..."):
+            with st.spinner("Loading..."):
                 res, token = reviews(app_id, continuation_token=st.session_state.token)
                 st.session_state.token = token
                 st.session_state.all_matches.extend(process_reviews(res))
-                if not token:
-                    st.session_state.is_done = True
+                if not token: st.session_state.is_done = True
 
-# --- QUICK COPY (SIDEBAR) ---
+# --- SIDEBAR COPY ---
 if st.session_state.all_matches:
     st.sidebar.markdown("---")
-    st.sidebar.subheader("📋 Quick Copy Results")
+    st.sidebar.subheader("📋 Quick Copy")
     app_id_label = extract_id(app_url)
     date_display = target_date.strftime('%d %B %Y')
     copy_text = f"{app_id_label} ({date_display}) :\n"
     for i, m in enumerate(st.session_state.all_matches, 1):
         copy_text += f"{i}. {m['User']}: {m['Review']}\n"
-    st.sidebar.text_area("Select All & Copy:", value=copy_text, height=350)
+    st.sidebar.text_area("Select All & Copy:", value=copy_text, height=300)
 
-# --- RESULTS DISPLAY ---
+# --- RESULTS & DOWNLOAD ---
 if st.session_state.is_done:
-    st.markdown('<div class="status-done">✅ TASK COMPLETED: All reviews scanned!</div>', unsafe_allow_html=True)
+    st.markdown('<div class="status-done">✅ ALL REVIEWS SCANNED</div>', unsafe_allow_html=True)
 
 if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
-    st.success(f"Found {len(df)} matching reviews")
+    st.success(f"Matches: {len(df)}")
     st.dataframe(df, use_container_width=True)
     
     # DYNAMIC FILENAME FIX
-    app_id_label = extract_id(app_url)
-    file_date = target_date.strftime('%Y-%m-%d')
-    dynamic_filename = f"{app_id_label}_{file_date}.csv"
+    app_id_name = extract_id(app_url)
+    formatted_date = target_date.strftime('%Y-%m-%d')
+    final_filename = f"{app_id_name}_{formatted_date}.csv"
     
-    csv_data = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Download Report (CSV)", 
-        data=csv_data, 
-        file_name=dynamic_filename, 
-        mime='text/csv'
-    )
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Report", data=csv, file_name=final_filename, mime='text/csv')
