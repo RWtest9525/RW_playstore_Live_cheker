@@ -9,21 +9,31 @@ import os
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# --- IMPROVED CUSTOM CSS ---
+# --- IMPROVED CUSTOM CSS FOR SINGLE-LINE HEADER ---
 st.markdown("""
     <style>
-    /* Clean Logo Styling (Non-circular) */
-    [data-testid="stImage"] img {
-        border-radius: 8px; /* Slightly rounded corners for a modern look */
-        box-shadow: 0 4px 10px rgba(0,255,0,0.2); /* Subtle green glow */
-        object-fit: contain;
-        width: 80px !important;
-    }
-    
-    /* Perfect vertical alignment for the header */
-    [data-testid="column"] {
+    /* Force the header container to stay in one line */
+    .header-container {
         display: flex;
         align-items: center;
+        flex-wrap: nowrap;
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .header-logo img {
+        border-radius: 8px;
+        box-shadow: 0 4px 10px rgba(0,255,0,0.2);
+        object-fit: contain;
+        width: 60px !important;
+        height: 60px !important;
+    }
+    
+    .header-title {
+        margin: 0 !important;
+        padding: 0 !important;
+        font-size: 35px !important;
+        white-space: nowrap;
     }
 
     /* Table & Data Styling */
@@ -33,7 +43,6 @@ st.markdown("""
         line-height: 1.5 !important; 
     }
     
-    /* "All Done" Success Box */
     .status-done { 
         color: #2ecc71; 
         font-weight: bold; 
@@ -46,29 +55,32 @@ st.markdown("""
         background-color: rgba(46, 204, 113, 0.1);
     }
 
-    /* Better Buttons */
     .stButton > button { 
         width: 100% !important; 
         border-radius: 8px !important; 
         font-weight: bold !important;
-        transition: 0.3s;
-    }
-    .stButton > button:hover {
-        border-color: #2ecc71 !important;
-        color: #2ecc71 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER SECTION ---
+# --- HEADER SECTION (SINGLE LINE FIX) ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    # column ratio [1, 12] keeps logo and text close together
-    col_l, col_r = st.columns([1, 12]) 
+    st.markdown(f"""
+        <div class="header-container">
+            <div class="header-logo">
+                <img src="data:image/png;base64,{st.image(logo_path).data if False else ''}" style="display:none;">
+            </div>
+            <h1 class="header-title">RW play store live cheker</h1>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # We use standard streamlit calls but wrap them in a container logic
+    col_l, col_r = st.columns([1, 10])
     with col_l:
         st.image(logo_path)
     with col_r:
-        st.markdown("<h1 style='margin:0; padding-left:15px; font-size: 40px;'>RW play store live cheker</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='margin:0; font-size: 35px; white-space: nowrap;'>RW play store live cheker</h1>", unsafe_allow_html=True)
 else:
     st.title("📊 RW play store live cheker")
 
