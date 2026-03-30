@@ -9,50 +9,55 @@ import os
 # Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# --- FIXED CSS: NO CROPPING & DYNAMIC FILENAME ---
+# --- ADVANCED CSS FOR RESPONSIVE HEADER & LOGO ---
 st.markdown("""
     <style>
-    /* Remove default padding */
-    .block-container { padding-top: 1.5rem !important; }
-    
-    /* FIX: No more cut-off logo. Original square/rect shape preserved */
-    [data-testid="stImage"] img {
-        border-radius: 0% !important; /* Forces square shape */
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        object-fit: contain !important;
-        width: auto !important;
-        max-height: 70px !important;
-    }
-    
-    /* Align Logo and Title in one perfect line */
-    [data-testid="column"] {
+    /* 1. Reset padding for a cleaner look */
+    .block-container { padding-top: 1rem !important; }
+
+    /* 2. FLEXBOX HEADER: This ensures logo and text adjust to any screen size */
+    .header-wrapper {
         display: flex;
         align-items: center;
-        justify-content: flex-start;
+        gap: 15px;
+        margin-bottom: 20px;
+        width: 100%;
+    }
+    
+    .logo-container img {
+        height: 60px !important;
+        width: auto !important;
+        border-radius: 8px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        flex-shrink: 0; /* Prevents logo from being squashed */
     }
 
-    .header-text {
-        margin: 0 !important;
-        padding-left: 15px;
-        font-size: 38px !important;
+    .title-text {
+        font-size: clamp(20px, 5vw, 40px); /* Responsive font: shrinks on small screens */
         font-weight: bold;
-        white-space: nowrap;
+        margin: 0;
+        line-height: 1.2;
+        color: white;
     }
 
+    /* Table & Status Styling */
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
     .status-done { color: #2ecc71; font-weight: bold; font-size: 20px; border: 2px solid #2ecc71; padding: 10px; border-radius: 10px; text-align: center; margin: 15px 0; background-color: rgba(46, 204, 113, 0.1); }
-    .stButton > button { width: 100% !important; border-radius: 8px !important; }
+    .stButton > button { width: 100% !important; border-radius: 8px !important; font-weight: bold !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER SECTION ---
+# --- SINGLE RESPONSIVE HEADER ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
-    col_l, col_r = st.columns([1, 10]) 
-    with col_l:
-        st.image(logo_path)
-    with col_r:
-        st.markdown("<div class='header-text'>RW play store live cheker</div>", unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class="header-wrapper">
+            <div class="logo-container">
+                <img src="https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png">
+            </div>
+            <h1 class="title-text">RW play store live cheker</h1>
+        </div>
+    """, unsafe_allow_html=True)
 else:
     st.title("📊 RW play store live cheker")
 
@@ -169,7 +174,7 @@ if st.session_state.all_matches:
     st.success(f"Found {len(df)} matching reviews")
     st.dataframe(df, use_container_width=True)
     
-    # FIX: Export filename as "AppID_Date.csv"
+    # DYNAMIC FILENAME FIX
     app_id_label = extract_id(app_url)
     file_date = target_date.strftime('%Y-%m-%d')
     dynamic_filename = f"{app_id_label}_{file_date}.csv"
@@ -178,6 +183,6 @@ if st.session_state.all_matches:
     st.download_button(
         label="📥 Download Report (CSV)", 
         data=csv_data, 
-        file_name=dynamic_filename, # Dynamic name used here
+        file_name=dynamic_filename, 
         mime='text/csv'
     )
