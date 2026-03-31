@@ -10,32 +10,22 @@ import io
 # 1. Page Config
 st.set_page_config(page_title="RW Pro Live Checker", page_icon="🚀", layout="wide")
 
-# 2. Theme & UI Styling
-if 'theme' not in st.session_state:
-    st.session_state.theme = 'dark'
-
-def toggle_theme():
-    st.session_state.theme = 'light' if st.session_state.theme == 'dark' else 'dark'
-
-# Custom CSS for Dark/Light Mode Visibility
-if st.session_state.theme == 'dark':
-    st.markdown("""
-        <style>
-        .stApp { background-color: #0E1117; color: #E0E0E0; }
-        .stDataFrame { border: 1px solid #30363d !important; border-radius: 10px; }
-        .small-counter { border: 1px solid #2ecc71; background-color: rgba(46, 204, 113, 0.1); padding: 8px 15px; border-radius: 8px; margin-bottom: 15px; }
-        .small-counter b { color: #2ecc71; font-size: 18px; }
-        h2, h3 { color: #FFFFFF !important; }
-        .stTable { background-color: #161b22; border-radius: 10px; color: white; }
-        </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-        <style>
-        .stApp { background-color: #FFFFFF; color: #1F2937; }
-        .small-counter { border: 1px solid #2ecc71; background-color: #f0fff4; padding: 8px 15px; border-radius: 8px; margin-bottom: 15px; }
-        .small-counter b { color: #16a34a; font-size: 18px; }
-        </style>
+# 2. UI Styling (Standard Theme)
+st.markdown("""
+    <style>
+    .block-container { padding-top: 1rem !important; }
+    .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
+    .stButton > button { width: 100% !important; font-weight: bold !important; border-radius: 8px !important; }
+    .small-counter { 
+        border: 1px solid #2ecc71; 
+        background-color: #f0fff4; 
+        padding: 8px 15px; 
+        border-radius: 8px; 
+        margin-bottom: 15px; 
+        display: inline-block;
+    }
+    .small-counter b { color: #16a34a; font-size: 18px; }
+    </style>
     """, unsafe_allow_html=True)
 
 # --- HEADER ---
@@ -59,7 +49,6 @@ def extract_id(url):
     return match.group(1) if match else None
 
 # --- SIDEBAR ---
-st.sidebar.button("🌓 Toggle Dark/Light Mode", on_click=toggle_theme)
 st.sidebar.header("⚙️ Configuration")
 
 if st.sidebar.button("🔄 Switch Mode"):
@@ -99,7 +88,6 @@ def fetch_logic(aid, target_dt, depth):
         rev_time = r['at'].replace(tzinfo=pytz.utc).astimezone(ist_tz)
         if rev_time.date() == target_dt:
             text = r['content'].strip()
-            # Catch the hint
             if text.endswith(custom_symbol) or custom_symbol == "Show All":
                 matches.append({
                     "User": r['userName'], "Review": text, "App ID": aid,
@@ -117,10 +105,11 @@ if st.button("🚀 Run Professional Check"):
     for i, url in enumerate(urls):
         aid = extract_id(url)
         if aid:
-            found = fetch_logic(aid, target_date, scan_depth)
-            st.session_state.all_matches.extend(found)
-            st.session_state.summary_dict[aid] = len(found)
-            st.session_state.history.append(f"{datetime.now().strftime('%H:%M')} - {aid} ({len(found)})")
+            with st.spinner(f"Scanning {aid}..."):
+                found = fetch_logic(aid, target_date, scan_depth)
+                st.session_state.all_matches.extend(found)
+                st.session_state.summary_dict[aid] = len(found)
+                st.session_state.history.append(f"{datetime.now().strftime('%H:%M')} - {aid} ({len(found)})")
         progress_bar.progress((i + 1) / len(urls))
     st.balloons()
 
