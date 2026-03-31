@@ -31,28 +31,17 @@ st.markdown("""
         font-size: 14px;
     }
     .small-counter b { color: #2ecc71; font-size: 16px; }
-    
-    .summary-box {
-        background-color: #0E1117;
-        border: 1px solid #333;
-        padding: 10px;
-        border-radius: 5px;
-        margin-top: 20px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER SECTION ---
-logo_path = "logo.png"
-if os.path.exists(logo_path):
-    st.markdown(f"""
-        <div class="header-container">
-            <img src="https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png">
-            <h2>RW play store live cheker</h2>
-        </div>
-    """, unsafe_allow_html=True)
-else:
-    st.title("📊 RW play store live cheker")
+# --- HEADER ---
+logo_url = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
+st.markdown(f"""
+    <div class="header-container">
+        <img src="{logo_url}">
+        <h2>RW play store live cheker</h2>
+    </div>
+""", unsafe_allow_html=True)
 
 # 3. Initialize session state
 if 'all_matches' not in st.session_state: st.session_state.all_matches = []
@@ -118,8 +107,10 @@ if st.button("🚀 Run Check"):
         for url in urls:
             aid = extract_id(url)
             if aid:
-                res, _ = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
-                st.session_state.all_matches.extend(process_reviews(res, aid))
+                try:
+                    res, _ = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
+                    st.session_state.all_matches.extend(process_reviews(res, aid))
+                except: continue
     else:
         aid = extract_id(app_url)
         if aid:
@@ -128,47 +119,39 @@ if st.button("🚀 Run Check"):
 
 # --- DISPLAY ---
 if st.session_state.all_matches:
-    # 1. Small Total Counter
     st.markdown(f'<div class="small-counter">Total Live: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
-    
     df = pd.DataFrame(st.session_state.all_matches)
     
-    # EXACT COLUMN ORDER: User and Review first, Metadata last
+    # ORDER: User, Review first, metadata last
     desired_order = ["User", "Review", "App ID", "Rating", "Date", "Posting Time"]
     df = df[desired_order]
-    
-    # 2. Main Data Table
     st.dataframe(df, use_container_width=True)
     
-    # 3. Summary Table on Page
+    # APP SUMMARY ON SCREEN
     st.markdown("### 📊 App Wise Summary")
     summary_df = df['App ID'].value_counts().reset_index()
     summary_df.columns = ['App ID', 'Live Count']
     st.table(summary_df)
     
-    # 4. EXCEL EXPORT WITH SUMMARY FORMULAS
+    # EXCEL EXPORT (Fixing Summary Count)
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Data')
         workbook = writer.book
-        worksheet = writer.sheets['Data']
-        row_count = len(df)
         
-        # Format for Summary Header
+        # Create a dedicated Summary Sheet
+        summary_sheet = workbook.add_worksheet('Summary')
         header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
         
-        # Write Summary Table at the bottom of Excel
-        summary_row = row_count + 3
-        worksheet.write(summary_row, 0, "APP NAME / ID", header_fmt)
-        worksheet.write(summary_row, 1, "LIVE COUNT", header_fmt)
+        summary_sheet.write(0, 0, "APP NAME / ID", header_fmt)
+        summary_sheet.write(0, 1, "LIVE COUNT", header_fmt)
         
-        unique_apps = df['App ID'].unique()
-        for i, app in enumerate(unique_apps):
-            current_row = summary_row + 1 + i
-            worksheet.write(current_row, 0, app)
-            # FIXED FORMULA: App ID is in Column C (index 2)
-            formula = f'=COUNTIF(C2:C{row_count+1}, "{app}")'
-            worksheet.write_formula(current_row, 1, formula)
+        for i, (app_id, count) in enumerate(summary_df.values):
+            summary_sheet.write(i + 1, 0, app_id)
+            summary_sheet.write(i + 1, 1, count)
+            
+        summary_sheet.write(len(summary_df) + 1, 0, "GRAND TOTAL", header_fmt)
+        summary_sheet.write(len(summary_df) + 1, 1, len(df), header_fmt)
 
     st.download_button(
         label="📥 Download Excel Report", 
