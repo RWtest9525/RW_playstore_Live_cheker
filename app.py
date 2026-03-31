@@ -31,6 +31,14 @@ st.markdown("""
         font-size: 14px;
     }
     .small-counter b { color: #2ecc71; font-size: 16px; }
+    
+    .summary-box {
+        background-color: #0E1117;
+        border: 1px solid #333;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 20px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -61,7 +69,7 @@ if st.sidebar.button("🔄 Switch Mode"):
     st.session_state.all_matches = []
 
 if st.session_state.bulk_mode:
-    bulk_links = st.sidebar.text_area("Enter Bulk Links:", height=150)
+    bulk_links = st.sidebar.text_area("Enter Bulk Links (One per line):", height=150)
 else:
     app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
 
@@ -94,10 +102,10 @@ def process_reviews(res, app_id):
             matches.append({
                 "User": r['userName'],
                 "Review": content,
+                "App ID": app_id,
                 "Rating": f"{r['score']}/5",
                 "Date": rev_time.strftime('%Y-%m-%d'),
-                "Posting Time": rev_time.strftime('%H:%M:%S'),
-                "App ID": app_id
+                "Posting Time": rev_time.strftime('%H:%M:%S')
             })
     return matches
 
@@ -120,16 +128,25 @@ if st.button("🚀 Run Check"):
 
 # --- DISPLAY ---
 if st.session_state.all_matches:
+    # 1. Small Total Counter
     st.markdown(f'<div class="small-counter">Total Live: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
+    
     df = pd.DataFrame(st.session_state.all_matches)
     
-    # EXACT COLUMN ORDER FOR THE MAIN PAGE
-    desired_order = ["User", "Review", "Rating", "Date", "Posting Time", "App ID"]
+    # EXACT COLUMN ORDER: User and Review first, Metadata last
+    desired_order = ["User", "Review", "App ID", "Rating", "Date", "Posting Time"]
     df = df[desired_order]
     
+    # 2. Main Data Table
     st.dataframe(df, use_container_width=True)
     
-    # EXCEL EXPORT
+    # 3. Summary Table on Page
+    st.markdown("### 📊 App Wise Summary")
+    summary_df = df['App ID'].value_counts().reset_index()
+    summary_df.columns = ['App ID', 'Live Count']
+    st.table(summary_df)
+    
+    # 4. EXCEL EXPORT WITH SUMMARY FORMULAS
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Data')
@@ -137,13 +154,25 @@ if st.session_state.all_matches:
         worksheet = writer.sheets['Data']
         row_count = len(df)
         
-        # Summary Table
-        worksheet.write(row_count + 2, 0, "APP SUMMARY", workbook.add_format({'bold': True}))
-        apps = df['App ID'].unique()
-        for i, app in enumerate(apps):
-            worksheet.write(row_count + 3 + i, 0, app)
-            # App ID is now in Column F (index 5)
-            formula = f'=COUNTIF(F2:F{row_count+1}, "{app}")'
-            worksheet.write_formula(row_count + 3 + i, 1, formula)
+        # Format for Summary Header
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
+        
+        # Write Summary Table at the bottom of Excel
+        summary_row = row_count + 3
+        worksheet.write(summary_row, 0, "APP NAME / ID", header_fmt)
+        worksheet.write(summary_row, 1, "LIVE COUNT", header_fmt)
+        
+        unique_apps = df['App ID'].unique()
+        for i, app in enumerate(unique_apps):
+            current_row = summary_row + 1 + i
+            worksheet.write(current_row, 0, app)
+            # FIXED FORMULA: App ID is in Column C (index 2)
+            formula = f'=COUNTIF(C2:C{row_count+1}, "{app}")'
+            worksheet.write_formula(current_row, 1, formula)
 
-    st.download_button("📥 Download Excel Report", data=output.getvalue(), file_name=f"Report_{target_date}.xlsx")
+    st.download_button(
+        label="📥 Download Excel Report", 
+        data=output.getvalue(), 
+        file_name=f"Report_{target_date}.xlsx", 
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
