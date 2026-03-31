@@ -10,19 +10,17 @@ import io
 # 1. Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# 2. CSS Styling (Fixing Header and shrinking Total Live box)
+# 2. CSS Styling
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
     .stButton > button { width: 100% !important; font-weight: bold !important; border-radius: 8px !important; }
     
-    /* Small and clean Header Alignment */
     .header-container { display: flex; align-items: center; gap: 15px; margin-bottom: 15px; }
     .header-container img { height: 50px !important; width: auto !important; border-radius: 5px; }
     .header-container h2 { margin: 0 !important; font-size: 28px !important; }
 
-    /* SHRUNKEN TOTAL LIVE BOX */
     .small-counter {
         padding: 4px 12px;
         border-radius: 4px;
@@ -58,26 +56,24 @@ def extract_id(url):
 
 # --- SIDEBAR CONFIG ---
 st.sidebar.header("⚙️ Configuration")
-if st.sidebar.button("🔄 Switch to " + ("Single Mode" if st.session_state.bulk_mode else "Bulk Check")):
+if st.sidebar.button("🔄 Switch Mode"):
     st.session_state.bulk_mode = not st.session_state.bulk_mode
     st.session_state.all_matches = []
 
 if st.session_state.bulk_mode:
-    bulk_links = st.sidebar.text_area("Enter Bulk Links (One per line):", height=150)
+    bulk_links = st.sidebar.text_area("Enter Bulk Links:", height=150)
 else:
     app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
 
 count = st.sidebar.slider("Batch Size", 10, 1000, 500)
-score_filter = st.sidebar.selectbox("Filter Stars", [None, 5, 4, 3, 2, 1], format_func=lambda x: "Show All" if x is None else f"{x} Stars")
+score_filter = st.sidebar.selectbox("Filter Stars", [None, 5, 4, 3, 2, 1])
 
-st.sidebar.subheader("📅 Date Filter")
-use_date = st.sidebar.checkbox("Filter by Specific Date", value=True)
+use_date = st.sidebar.checkbox("Filter by Date", value=True)
 ist = pytz.timezone('Asia/Kolkata')
 target_date = st.sidebar.date_input("Select Date", datetime.now(ist))
 
-st.sidebar.subheader("🔍 Hint Logic")
-hint_type = st.sidebar.radio("Hint Type", ["Show All", "No Hint (Normal .)", "Custom Symbol"], index=2)
-custom_symbol = st.sidebar.text_input("Enter Symbol", value="!")
+hint_type = st.sidebar.radio("Hint", ["Show All", "No Hint (Normal .)", "Custom Symbol"], index=2)
+custom_symbol = st.sidebar.text_input("Symbol", value="!")
 
 def process_reviews(res, app_id):
     matches = []
@@ -97,16 +93,17 @@ def process_reviews(res, app_id):
         if keep:
             matches.append({
                 "App ID": app_id,
-                "Stars": "⭐" * r['score'],
-                "Date": rev_time.strftime('%H:%M:%S'),
                 "User": r['userName'],
-                "Review": content
+                "Review": content,
+                "Rating": f"{r['score']}/5", # Changed to numerical
+                "Date": rev_time.strftime('%Y-%m-%d'), # Date only
+                "Posting Time": rev_time.strftime('%H:%M:%S') # Time only
             })
     return matches
 
 # --- EXECUTION ---
 st.markdown("---")
-if st.button("🚀 Run " + ("Bulk Process" if st.session_state.bulk_mode else "Single Check")):
+if st.button("🚀 Run Check"):
     st.session_state.all_matches = []
     if st.session_state.bulk_mode:
         urls = [u.strip() for u in bulk_links.split('\n') if u.strip()]
@@ -127,29 +124,19 @@ if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
     st.dataframe(df, use_container_width=True)
     
-    # EXCEL EXPORT WITH FORMULAS & SUMMARY
+    # EXCEL EXPORT
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Data')
         workbook = writer.book
         worksheet = writer.sheets['Data']
+        row_count = len(df)
         
-        # Summary Table at the bottom
-        row_idx = len(df) + 3
-        bold = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
-        worksheet.write(row_idx, 0, "APP NAME / ID", bold)
-        worksheet.write(row_idx, 1, "LIVE COUNT", bold)
-        
-        unique_apps = df['App ID'].unique()
-        for i, app in enumerate(unique_apps):
-            worksheet.write(row_idx + 1 + i, 0, app)
-            # Excel formula to count occurrences of this App ID in Column A
-            formula = f'=COUNTIF(A2:A{len(df)+1}, "{app}")'
-            worksheet.write_formula(row_idx + 1 + i, 1, formula)
+        # Summary Table
+        worksheet.write(row_count + 2, 0, "APP SUMMARY", workbook.add_format({'bold': True}))
+        apps = df['App ID'].unique()
+        for i, app in enumerate(apps):
+            worksheet.write(row_count + 3 + i, 0, app)
+            worksheet.write_formula(row_count + 3 + i, 1, f'=COUNTIF(A2:A{row_count+1}, "{app}")')
 
-    st.download_button(
-        label="📥 Download Excel Report", 
-        data=output.getvalue(), 
-        file_name=f"Report_{target_date}.xlsx", 
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    st.download_button("📥 Download Excel Report", data=output.getvalue(), file_name=f"Report_{target_date}.xlsx")
