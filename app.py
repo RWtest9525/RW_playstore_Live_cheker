@@ -5,17 +5,26 @@ from google_play_scraper import Sort, reviews
 from datetime import datetime
 import pytz
 import os
+import io
 
 # 1. Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# 2. Header Style Fix
+# 2. CSS Styling
 st.markdown("""
     <style>
     .block-container { padding-top: 1.5rem !important; }
-    [data-testid="column"] { display: flex; align-items: center; }
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
     .stButton > button { width: 100% !important; font-weight: bold !important; border-radius: 8px !important; }
+    .counter-box {
+        background-color: #1E1E1E;
+        border: 2px solid #2ecc71;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .counter-box h2 { color: #2ecc71; margin: 0; font-size: 30px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -36,17 +45,14 @@ def extract_id(url):
     match = re.search(r'id=([a-zA-Z0-9._]+)', url)
     return match.group(1) if match else None
 
-# --- SIDEBAR CONFIGURATION ---
+# --- SIDEBAR CONFIG ---
 st.sidebar.header("⚙️ Configuration")
-
-# BULK CHECK TOGGLE BUTTON
 if st.sidebar.button("🔄 Switch to " + ("Single Mode" if st.session_state.bulk_mode else "Bulk Check")):
     st.session_state.bulk_mode = not st.session_state.bulk_mode
     st.session_state.all_matches = []
 
 if st.session_state.bulk_mode:
-    st.sidebar.warning("📁 BULK MODE ACTIVE")
-    bulk_links = st.sidebar.text_area("Enter Bulk Links (One per line):", height=200, placeholder="https://play.google.com/...\nhttps://play.google.com/...")
+    bulk_links = st.sidebar.text_area("Enter Bulk Links (One per line):", height=200)
 else:
     app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
 
@@ -81,6 +87,7 @@ def process_reviews(res, app_id):
         if keep:
             matches.append({
                 "App ID": app_id,
+                "Stars": "⭐" * r['score'],
                 "Date": review_time_ist.strftime('%Y-%m-%d %H:%M:%S'),
                 "User": r['userName'],
                 "Review": content
@@ -91,36 +98,54 @@ def process_reviews(res, app_id):
 st.markdown("---")
 if st.button("🚀 Run " + ("Bulk Process" if st.session_state.bulk_mode else "Single Check")):
     st.session_state.all_matches = []
-    
     if st.session_state.bulk_mode:
         urls = [u.strip() for u in bulk_links.split('\n') if u.strip()]
-        if not urls: st.error("Please enter links!")
-        else:
-            progress_bar = st.progress(0)
-            for i, url in enumerate(urls):
-                app_id = extract_id(url)
-                if app_id:
-                    with st.spinner(f"Processing: {app_id}"):
-                        res, _ = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
-                        st.session_state.all_matches.extend(process_reviews(res, app_id))
-                progress_bar.progress((i + 1) / len(urls))
-            st.success("Bulk Processing Complete!")
+        for url in urls:
+            app_id = extract_id(url)
+            if app_id:
+                res, _ = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
+                st.session_state.all_matches.extend(process_reviews(res, app_id))
     else:
         app_id = extract_id(app_url)
         if app_id:
-            with st.spinner(f"Fetching: {app_id}"):
-                res, _ = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
-                st.session_state.all_matches = process_reviews(res, app_id)
-        else: st.error("Invalid URL")
+            res, _ = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
+            st.session_state.all_matches = process_reviews(res, app_id)
 
-# --- RESULTS ---
+# --- RESULTS DISPLAY ---
 if st.session_state.all_matches:
+    total_count = len(st.session_state.all_matches)
+    st.markdown(f'<div class="counter-box"><h2>Total Live Matches: {total_count}</h2></div>', unsafe_allow_html=True)
+    
     df = pd.DataFrame(st.session_state.all_matches)
     st.dataframe(df, use_container_width=True)
     
-    # Filename Logic
+    # EXCEL EXPORT WITH SUMMARY & FORMULAS
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Reviews')
+        workbook = writer.book
+        worksheet = writer.sheets['Reviews']
+        
+        # Summary Section
+        summary_start_row = len(df) + 3
+        header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
+        worksheet.write(summary_start_row, 0, "APP SUMMARY", header_fmt)
+        worksheet.write(summary_start_row, 1, "LIVE COUNT (Formula)", header_fmt)
+        
+        unique_apps = df['App ID'].unique()
+        for idx, app in enumerate(unique_apps):
+            current_row = summary_start_row + 1 + idx
+            worksheet.write(current_row, 0, app)
+            # EXCEL FORMULA: Counts reviews for this specific App ID
+            # Column A (0) is where App ID is stored
+            formula = f'=COUNTIF(A2:A{len(df)+1}, "{app}")'
+            worksheet.write_formula(current_row, 1, formula)
+
+        # Final Total
+        total_row = summary_start_row + len(unique_apps) + 1
+        worksheet.write(total_row, 0, "GRAND TOTAL", header_fmt)
+        worksheet.write_formula(total_row, 1, f'=SUM(B{summary_start_row + 2}:B{total_row})', header_fmt)
+
     file_date = target_date.strftime('%Y-%m-%d')
-    filename = f"Bulk_Report_{file_date}.csv" if st.session_state.bulk_mode else f"{extract_id(app_url)}_{file_date}.csv"
-    
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Download All Results", data=csv, file_name=filename, mime='text/csv')
+    btn_label = "📥 Download Bulk Excel" if st.session_state.bulk_mode else "📥 Download Excel"
+    st.download_button(label=btn_label, data=output.getvalue(), file_name=f"Report_{file_date}.xlsx", mime="application/vnd.ms-excel")
