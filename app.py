@@ -92,12 +92,12 @@ def process_reviews(res, app_id):
 
         if keep:
             matches.append({
-                "App ID": app_id,
                 "User": r['userName'],
                 "Review": content,
-                "Rating": f"{r['score']}/5", # Changed to numerical
-                "Date": rev_time.strftime('%Y-%m-%d'), # Date only
-                "Posting Time": rev_time.strftime('%H:%M:%S') # Time only
+                "Rating": f"{r['score']}/5",
+                "Date": rev_time.strftime('%Y-%m-%d'),
+                "Posting Time": rev_time.strftime('%H:%M:%S'),
+                "App ID": app_id
             })
     return matches
 
@@ -122,6 +122,11 @@ if st.button("🚀 Run Check"):
 if st.session_state.all_matches:
     st.markdown(f'<div class="small-counter">Total Live: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
     df = pd.DataFrame(st.session_state.all_matches)
+    
+    # EXACT COLUMN ORDER FOR THE MAIN PAGE
+    desired_order = ["User", "Review", "Rating", "Date", "Posting Time", "App ID"]
+    df = df[desired_order]
+    
     st.dataframe(df, use_container_width=True)
     
     # EXCEL EXPORT
@@ -137,6 +142,8 @@ if st.session_state.all_matches:
         apps = df['App ID'].unique()
         for i, app in enumerate(apps):
             worksheet.write(row_count + 3 + i, 0, app)
-            worksheet.write_formula(row_count + 3 + i, 1, f'=COUNTIF(A2:A{row_count+1}, "{app}")')
+            # App ID is now in Column F (index 5)
+            formula = f'=COUNTIF(F2:F{row_count+1}, "{app}")'
+            worksheet.write_formula(row_count + 3 + i, 1, formula)
 
     st.download_button("📥 Download Excel Report", data=output.getvalue(), file_name=f"Report_{target_date}.xlsx")
