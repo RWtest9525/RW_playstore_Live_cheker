@@ -69,7 +69,7 @@ use_date = st.sidebar.checkbox("Filter by Date", value=True)
 ist = pytz.timezone('Asia/Kolkata')
 target_date = st.sidebar.date_input("Select Date", datetime.now(ist))
 
-hint_type = st.sidebar.radio("Hint", ["Show All", "No Hint (Normal .)", "Custom Symbol"], index=2)
+hint_type = st.sidebar.radio("Hint", ["Show All", "No Hint (Normal .)", "Custom Symbol"], index=0)
 custom_symbol = st.sidebar.text_input("Symbol", value="!")
 
 def process_reviews(res, app_id):
@@ -116,6 +116,9 @@ if st.button("🚀 Run Check"):
         if aid:
             res, _ = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
             st.session_state.all_matches = process_reviews(res, aid)
+    
+    if not st.session_state.all_matches:
+        st.warning("⚠️ No reviews found matching these filters for this date.")
 
 # --- DISPLAY ---
 if st.session_state.all_matches:
@@ -126,7 +129,7 @@ if st.session_state.all_matches:
     df = df[desired_order]
     st.dataframe(df, use_container_width=True)
     
-    # Summary Table on screen
+    # Summary Table
     st.markdown("### 📊 App Wise Summary")
     summary_df = df['App ID'].value_counts().reindex(df['App ID'].unique()).reset_index()
     summary_df.columns = ['App ID', 'Live Count']
@@ -135,33 +138,30 @@ if st.session_state.all_matches:
     # EXCEL EXPORT
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # 1. Data Sheet with Gaps
         start_row = 0
         unique_apps = df['App ID'].unique()
         for app_id in unique_apps:
             app_df = df[df['App ID'] == app_id]
             app_df.to_excel(writer, index=False, sheet_name='Data', startrow=start_row)
-            # Increment start_row: (len of data) + 1 (for header) + 1 (for the gap)
-            start_row += len(app_df) + 2
+            start_row += len(app_df) + 2 # ONE LINE GAP
             
-        # 2. Dedicated Summary Sheet
         workbook = writer.book
         summary_sheet = workbook.add_worksheet('Summary')
         header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
-        
         summary_sheet.write(0, 0, "APP NAME / ID", header_fmt)
         summary_sheet.write(0, 1, "LIVE COUNT", header_fmt)
-        
         for i, (app_id, count) in enumerate(summary_df.values):
             summary_sheet.write(i + 1, 0, app_id)
             summary_sheet.write(i + 1, 1, count)
-            
         summary_sheet.write(len(summary_df) + 1, 0, "GRAND TOTAL", header_fmt)
         summary_sheet.write(len(summary_df) + 1, 1, len(df), header_fmt)
 
-    st.download_button(
-        label="📥 Download Excel Report", 
-        data=output.getvalue(), 
-        file_name=f"Report_{target_date}.xlsx", 
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    # DYNAMIC FILENAME FIX
+    file_date = target_date.strftime('%Y-%m-%d')
+    if st.session_state.bulk_mode:
+        final_filename = f"Bulk_Report_{file_date}.xlsx"
+    else:
+        app_id_label = extract_id(app_url)
+        final_filename = f"{app_id_label}_{file_date}.xlsx"
+
+    st.download_button(label="📥 Download Excel Report", data=output.getvalue(), file_name=final_filename)
