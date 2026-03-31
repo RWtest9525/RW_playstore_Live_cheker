@@ -10,7 +10,7 @@ import io
 # 1. Page Config
 st.set_page_config(page_title="RW Pro Live Checker", page_icon="🚀", layout="wide")
 
-# 2. UI Styling (Standard Clean Theme)
+# 2. UI Styling
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
@@ -48,7 +48,7 @@ def extract_id(url):
     match = re.search(r'id=([a-zA-Z0-9._]+)', url)
     return match.group(1) if match else None
 
-# --- SIDEBAR ---
+# --- SIDEBAR CONFIG ---
 st.sidebar.header("⚙️ Configuration")
 
 if st.sidebar.button("🔄 Switch Mode"):
@@ -60,12 +60,16 @@ if st.session_state.bulk_mode:
 else:
     app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.ideopay.user")
 
-# --- ALL FILTERS (STAR FILTER RESTORED) ---
+# --- FILTERS (ALL RESTORED) ---
 scan_depth = st.sidebar.select_slider("Scan Depth (Pages)", options=[1, 10, 50, 100, 200, 500], value=100)
-score_filter = st.sidebar.selectbox("Filter Stars", [None, 5, 4, 3, 2, 1], index=0) # <--- RESTORED
-
+score_filter = st.sidebar.selectbox("Filter Stars", [None, 5, 4, 3, 2, 1], index=0)
 target_date = st.sidebar.date_input("Select Date", datetime.now(pytz.timezone('Asia/Kolkata')))
-custom_symbol = st.sidebar.text_input("Symbol Hint (e.g. # or ,,)", value="#")
+
+# --- HINT FEATURE RESTORED ---
+hint_type = st.sidebar.radio("Hint Mode", ["Show All", "No Hint (Normal .)", "Custom Symbol"], index=2)
+custom_symbol = ""
+if hint_type == "Custom Symbol":
+    custom_symbol = st.sidebar.text_input("Enter Symbol (e.g. # or ,,)", value="#")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📜 History")
@@ -78,11 +82,7 @@ def fetch_logic(aid, target_dt, depth, star_val):
     ist_tz = pytz.timezone('Asia/Kolkata')
     for _ in range(depth):
         try:
-            res, token = reviews(
-                aid, lang='en', country='in', sort=Sort.NEWEST, 
-                count=100, continuation_token=token,
-                filter_score_with=star_val # <--- APPLY STAR FILTER
-            )
+            res, token = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=100, continuation_token=token, filter_score_with=star_val)
             if not res: break
             all_raw.extend(res)
             last_dt = res[-1]['at'].replace(tzinfo=pytz.utc).astimezone(ist_tz).date()
@@ -95,7 +95,17 @@ def fetch_logic(aid, target_dt, depth, star_val):
         rev_time = r['at'].replace(tzinfo=pytz.utc).astimezone(ist_tz)
         if rev_time.date() == target_dt:
             text = r['content'].strip()
-            if text.endswith(custom_symbol) or custom_symbol == "Show All":
+            
+            # Hint Logic
+            keep = False
+            if hint_type == "Show All": 
+                keep = True
+            elif hint_type == "No Hint (Normal .)":
+                keep = (text.endswith('.') and not text.endswith('..')) or (len(text) > 0 and text[-1].isalnum())
+            else:
+                keep = text.endswith(custom_symbol) if custom_symbol else True
+
+            if keep:
                 matches.append({
                     "User": r['userName'], "Review": text, "App ID": aid,
                     "Rating": f"{r['score']}/5", "Date": rev_time.strftime('%Y-%m-%d'), "Time": rev_time.strftime('%H:%M:%S')
@@ -126,7 +136,8 @@ if st.session_state.summary_dict:
     st.markdown(f'<div class="small-counter">Total Live: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
     
     if st.session_state.all_matches:
-        st.dataframe(pd.DataFrame(st.session_state.all_matches), use_container_width=True)
+        df = pd.DataFrame(st.session_state.all_matches)
+        st.dataframe(df, use_container_width=True)
     
     st.markdown("### 📊 Summary")
     st.table(pd.DataFrame(list(st.session_state.summary_dict.items()), columns=['App ID', 'Count']))
@@ -135,18 +146,23 @@ if st.session_state.summary_dict:
     st.subheader("📥 Export & Reporting")
     col1, col2, col3 = st.columns(3)
     
+    # Excel Export with AppID_Date Filename and Gaps
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        pd.DataFrame(st.session_state.all_matches).to_excel(writer, index=False, sheet_name='Data')
+        start_row = 0
+        for aid in st.session_state.summary_dict.keys():
+            app_data = [m for m in st.session_state.all_matches if m['App ID'] == aid]
+            if app_data:
+                pd.DataFrame(app_data).to_excel(writer, index=False, sheet_name='Data', startrow=start_row)
+                start_row += len(app_data) + 2
     
-    # FILENAME METHOD: AppID_Date.xlsx
     file_date = target_date.strftime('%Y-%m-%d')
     if st.session_state.bulk_mode:
-        final_filename = f"Bulk_Report_{file_date}.xlsx"
+        fname = f"Bulk_Report_{file_date}.xlsx"
     else:
-        current_aid = extract_id(app_url) if not st.session_state.bulk_mode else "Report"
-        final_filename = f"{current_aid}_{file_date}.xlsx"
+        aid_label = extract_id(app_url) if extract_id(app_url) else "Report"
+        fname = f"{aid_label}_{file_date}.xlsx"
 
-    col1.download_button("Excel Report", output.getvalue(), final_filename, use_container_width=True)
+    col1.download_button("Excel Report", output.getvalue(), fname, use_container_width=True)
     col2.button("PDF Summary (Coming Soon)", use_container_width=True)
     col3.button("Sync to Google Sheets", use_container_width=True)
