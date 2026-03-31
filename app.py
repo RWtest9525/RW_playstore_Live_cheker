@@ -25,16 +25,6 @@ st.markdown("""
         display: inline-block;
     }
     .small-counter b { color: #16a34a; font-size: 18px; }
-    /* Style for history buttons to look like links */
-    .stButton > button.history-btn {
-        background: none;
-        border: none;
-        padding: 0;
-        color: #007bff;
-        text-decoration: underline;
-        text-align: left;
-        font-size: 14px;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -52,7 +42,13 @@ if 'all_matches' not in st.session_state: st.session_state.all_matches = []
 if 'bulk_mode' not in st.session_state: st.session_state.bulk_mode = False
 if 'summary_dict' not in st.session_state: st.session_state.summary_dict = {}
 if 'history_list' not in st.session_state: st.session_state.history_list = []
+if 'trigger_run' not in st.session_state: st.session_state.trigger_run = False
+
+# Default values for inputs
 if 'app_url_input' not in st.session_state: st.session_state.app_url_input = "https://play.google.com/store/apps/details?id=com.ideopay.user"
+if 'stored_stars' not in st.session_state: st.session_state.stored_stars = None
+if 'stored_hint' not in st.session_state: st.session_state.stored_hint = "Custom Symbol"
+if 'stored_symbol' not in st.session_state: st.session_state.stored_symbol = "#"
 
 def extract_id(url):
     if not url or "play.google.com" not in url: return None
@@ -69,30 +65,48 @@ if st.sidebar.button("🔄 Switch Mode"):
 if st.session_state.bulk_mode:
     bulk_links = st.sidebar.text_area("Bulk Links (One per line):", height=150)
 else:
-    # Use session state for the input so history clicks can update it
     st.session_state.app_url_input = st.sidebar.text_input("Play Store URL:", value=st.session_state.app_url_input)
 
-# --- FILTERS (ALL FEATURES PRESENT) ---
+# FILTERS
 scan_depth = st.sidebar.select_slider("Scan Depth (Pages)", options=[1, 10, 50, 100, 200, 500], value=100)
-score_filter = st.sidebar.selectbox("Filter Stars", [None, 5, 4, 3, 2, 1], index=0)
+
+# Star Filter using Session State
+star_options = [None, 5, 4, 3, 2, 1]
+st.session_state.stored_stars = st.sidebar.selectbox(
+    "Filter Stars", 
+    star_options, 
+    index=star_options.index(st.session_state.stored_stars) if st.session_state.stored_stars in star_options else 0
+)
+
 target_date = st.sidebar.date_input("Select Date", datetime.now(pytz.timezone('Asia/Kolkata')))
 
-# HINT MODES
-hint_type = st.sidebar.radio("Hint Mode", ["Show All", "No Hint (Normal .)", "Custom Symbol"], index=2)
-custom_symbol = ""
-if hint_type == "Custom Symbol":
-    custom_symbol = st.sidebar.text_input("Enter Symbol (e.g. # or ,,)", value="#")
+# Hint Mode using Session State
+hint_options = ["Show All", "No Hint (Normal .)", "Custom Symbol"]
+st.session_state.stored_hint = st.sidebar.radio(
+    "Hint Mode", 
+    hint_options, 
+    index=hint_options.index(st.session_state.stored_hint)
+)
 
-# --- CLICKABLE HISTORY ---
+custom_symbol = ""
+if st.session_state.stored_hint == "Custom Symbol":
+    st.session_state.stored_symbol = st.sidebar.text_input("Enter Symbol", value=st.session_state.stored_symbol)
+    custom_symbol = st.session_state.stored_symbol
+
+# --- CLICKABLE HISTORY LOGIC ---
 st.sidebar.markdown("---")
-st.sidebar.subheader("📜 History (Click to Load)")
+st.sidebar.subheader("📜 History (Click to Load & Run)")
 for h in st.session_state.history_list[-5:]:
-    # h is a dict like {"aid": "com.xyz", "label": "10:30 - com.xyz (10)"}
-    if st.sidebar.button(h['label'], key=h['label'], help="Click to reload this App ID"):
-        st.session_state.app_url_input = f"https://play.google.com/store/apps/details?id={h['aid']}"
+    if st.sidebar.button(h['label'], key=f"btn_{h['label']}"):
+        # Load all previous settings from this history item
+        st.session_state.app_url_input = h['url']
+        st.session_state.stored_stars = h['stars']
+        st.session_state.stored_hint = h['hint_mode']
+        st.session_state.stored_symbol = h['symbol']
+        st.session_state.trigger_run = True # Tell the app to run immediately
         st.rerun()
 
-# --- LOGIC ---
+# --- FETCH LOGIC ---
 def fetch_logic(aid, target_dt, depth, star_val):
     all_raw = []
     token = None
@@ -113,8 +127,8 @@ def fetch_logic(aid, target_dt, depth, star_val):
         if rev_time.date() == target_dt:
             text = r['content'].strip()
             keep = False
-            if hint_type == "Show All": keep = True
-            elif hint_type == "No Hint (Normal .)":
+            if st.session_state.stored_hint == "Show All": keep = True
+            elif st.session_state.stored_hint == "No Hint (Normal .)":
                 keep = (text.endswith('.') and not text.endswith('..')) or (len(text) > 0 and text[-1].isalnum())
             else:
                 keep = text.endswith(custom_symbol) if custom_symbol else True
@@ -127,7 +141,12 @@ def fetch_logic(aid, target_dt, depth, star_val):
     return matches
 
 # --- EXECUTION ---
-if st.button("🚀 Run Professional Check"):
+# Run if the button is clicked OR if triggered by history
+run_pressed = st.button("🚀 Run Professional Check")
+
+if run_pressed or st.session_state.trigger_run:
+    st.session_state.trigger_run = False # Reset trigger
+    
     urls = [u.strip() for u in (bulk_links.split('\n') if st.session_state.bulk_mode else [st.session_state.app_url_input]) if u.strip()]
     st.session_state.all_matches = []
     st.session_state.summary_dict = {}
@@ -137,15 +156,24 @@ if st.button("🚀 Run Professional Check"):
         aid = extract_id(url)
         if aid:
             with st.spinner(f"Scanning {aid}..."):
-                found = fetch_logic(aid, target_date, scan_depth, score_filter)
+                found = fetch_logic(aid, target_date, scan_depth, st.session_state.stored_stars)
                 st.session_state.all_matches.extend(found)
                 st.session_state.summary_dict[aid] = len(found)
-                # Save to history with ID for clickability
+                
+                # Update History List
                 time_now = datetime.now().strftime('%H:%M')
-                st.session_state.history_list.append({
-                    "aid": aid, 
+                history_entry = {
+                    "aid": aid,
+                    "url": url,
+                    "stars": st.session_state.stored_stars,
+                    "hint_mode": st.session_state.stored_hint,
+                    "symbol": st.session_state.stored_symbol,
                     "label": f"{time_now} - {aid} ({len(found)})"
-                })
+                }
+                # Avoid duplicate labels in history
+                if not any(x['label'] == history_entry['label'] for x in st.session_state.history_list):
+                    st.session_state.history_list.append(history_entry)
+                    
         progress_bar.progress((i + 1) / len(urls))
     st.balloons()
     st.toast('✅ Scan Complete!', icon='🎉')
@@ -165,7 +193,6 @@ if st.session_state.summary_dict:
     st.subheader("📥 Export & Reporting")
     col1, col2, col3 = st.columns(3)
     
-    # Excel Export with AppID_Date Filename and Gaps
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         start_row = 0
@@ -176,11 +203,7 @@ if st.session_state.summary_dict:
                 start_row += len(app_data) + 2
     
     file_date = target_date.strftime('%Y-%m-%d')
-    if st.session_state.bulk_mode:
-        fname = f"Bulk_Report_{file_date}.xlsx"
-    else:
-        aid_label = extract_id(st.session_state.app_url_input) if extract_id(st.session_state.app_url_input) else "Report"
-        fname = f"{aid_label}_{file_date}.xlsx"
+    fname = f"Bulk_Report_{file_date}.xlsx" if st.session_state.bulk_mode else f"{extract_id(st.session_state.app_url_input)}_{file_date}.xlsx"
 
     col1.download_button("Excel Report", output.getvalue(), fname, use_container_width=True)
     col2.button("PDF Summary (Coming Soon)", use_container_width=True)
