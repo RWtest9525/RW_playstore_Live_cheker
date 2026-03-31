@@ -46,9 +46,9 @@ st.markdown(f"""
 # 3. Initialize session state
 if 'all_matches' not in st.session_state: st.session_state.all_matches = []
 if 'bulk_mode' not in st.session_state: st.session_state.bulk_mode = False
+if 'summary_data' not in st.session_state: st.session_state.summary_data = {}
 
 def extract_id(url):
-    # Handles both clean IDs and URLs with extra parameters
     match = re.search(r'id=([a-zA-Z0-9._]+)', url)
     return match.group(1) if match else None
 
@@ -57,6 +57,7 @@ st.sidebar.header("⚙️ Configuration")
 if st.sidebar.button("🔄 Switch to " + ("Single Mode" if st.session_state.bulk_mode else "Bulk Check")):
     st.session_state.bulk_mode = not st.session_state.bulk_mode
     st.session_state.all_matches = []
+    st.session_state.summary_data = {}
 
 if st.session_state.bulk_mode:
     bulk_links = st.sidebar.text_area("Enter Bulk Links (One per line):", height=150)
@@ -103,65 +104,74 @@ def process_reviews(res, app_id):
 st.markdown("---")
 if st.button("🚀 Run Check"):
     st.session_state.all_matches = []
+    st.session_state.summary_data = {}
+    
     if st.session_state.bulk_mode:
-        # Split by newlines and handle potential spaces or dots at the end of URLs
         urls = [u.strip().rstrip('.') for u in bulk_links.split('\n') if u.strip()]
         for url in urls:
             aid = extract_id(url)
             if aid:
                 try:
                     res, _ = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
-                    st.session_state.all_matches.extend(process_reviews(res, aid))
-                except: continue
+                    found_matches = process_reviews(res, aid)
+                    st.session_state.all_matches.extend(found_matches)
+                    # Track count even if it is 0
+                    st.session_state.summary_data[aid] = len(found_matches)
+                except:
+                    st.session_state.summary_data[aid] = 0
     else:
         aid = extract_id(app_url)
         if aid:
             res, _ = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
-            st.session_state.all_matches = process_reviews(res, aid)
+            found_matches = process_reviews(res, aid)
+            st.session_state.all_matches = found_matches
+            st.session_state.summary_data[aid] = len(found_matches)
 
 # --- DISPLAY & EXCEL ---
-if st.session_state.all_matches:
+if st.session_state.summary_data:
     # 1. Total Counter
-    st.markdown(f'<div class="small-counter">Total Live: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="small-counter">Total Live Across All Apps: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
     
-    df = pd.DataFrame(st.session_state.all_matches)
-    desired_order = ["User", "Review", "App ID", "Rating", "Date", "Posting Time"]
-    df = df[desired_order]
-    st.dataframe(df, use_container_width=True)
+    # 2. Data Table (If matches exist)
+    if st.session_state.all_matches:
+        df = pd.DataFrame(st.session_state.all_matches)
+        desired_order = ["User", "Review", "App ID", "Rating", "Date", "Posting Time"]
+        df = df[desired_order]
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("No matching reviews found for the selected criteria.")
     
-    # 2. Summary
+    # 3. Summary (Showing 0 for empty apps)
     st.markdown("### 📊 App Wise Summary")
-    summary_df = df['App ID'].value_counts().reindex(df['App ID'].unique()).reset_index()
-    summary_df.columns = ['App ID', 'Live Count']
+    summary_df = pd.DataFrame(list(st.session_state.summary_data.items()), columns=['App ID', 'Live Count'])
     st.table(summary_df)
     
-    # 3. Excel Download with Gap Logic
+    # 4. Excel Download
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        start_row = 0
-        unique_apps = df['App ID'].unique()
-        for app_id in unique_apps:
-            app_df = df[df['App ID'] == app_id]
-            app_df.to_excel(writer, index=False, sheet_name='Data', startrow=start_row)
-            start_row += len(app_df) + 2 # ONE LINE GAP
-            
+        # Sheet 1: Data with gaps
+        if st.session_state.all_matches:
+            start_row = 0
+            for app_id in st.session_state.summary_data.keys():
+                app_df = df[df['App ID'] == app_id]
+                if not app_df.empty:
+                    app_df.to_excel(writer, index=False, sheet_name='Data', startrow=start_row)
+                    start_row += len(app_df) + 2
+        
+        # Sheet 2: Summary (Always includes 0 counts)
         workbook = writer.book
         summary_sheet = workbook.add_worksheet('Summary')
         header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
         summary_sheet.write(0, 0, "APP NAME / ID", header_fmt)
         summary_sheet.write(0, 1, "LIVE COUNT", header_fmt)
-        for i, (app_id, count) in enumerate(summary_df.values):
+        
+        for i, (app_id, count_val) in enumerate(st.session_state.summary_data.items()):
             summary_sheet.write(i + 1, 0, app_id)
-            summary_sheet.write(i + 1, 1, count)
-        summary_sheet.write(len(summary_df) + 1, 0, "GRAND TOTAL", header_fmt)
-        summary_sheet.write(len(summary_df) + 1, 1, len(df), header_fmt)
+            summary_sheet.write(i + 1, 1, count_val)
+            
+        summary_sheet.write(len(st.session_state.summary_data) + 1, 0, "GRAND TOTAL", header_fmt)
+        summary_sheet.write(len(st.session_state.summary_data) + 1, 1, sum(st.session_state.summary_data.values()), header_fmt)
 
-    # 4. Filename Logic
     file_date = target_date.strftime('%Y-%m-%d')
-    if st.session_state.bulk_mode:
-        final_filename = f"Bulk_Report_{file_date}.xlsx"
-    else:
-        app_id_label = extract_id(app_url)
-        final_filename = f"{app_id_label}_{file_date}.xlsx"
-
+    final_filename = f"Bulk_Report_{file_date}.xlsx" if st.session_state.bulk_mode else f"{extract_id(app_url)}_{file_date}.xlsx"
     st.download_button(label="📥 Download Excel Report", data=output.getvalue(), file_name=final_filename)
