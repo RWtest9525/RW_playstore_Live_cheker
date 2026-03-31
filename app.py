@@ -9,133 +9,118 @@ import os
 # 1. Page Config
 st.set_page_config(page_title="RW play store live cheker", page_icon="🎯", layout="wide")
 
-# 2. Simple Header (Restored to your original style)
+# 2. Header Style Fix
+st.markdown("""
+    <style>
+    .block-container { padding-top: 1.5rem !important; }
+    [data-testid="column"] { display: flex; align-items: center; }
+    .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
+    .stButton > button { width: 100% !important; font-weight: bold !important; border-radius: 8px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- HEADER ---
 logo_path = "logo.png"
 if os.path.exists(logo_path):
     col_l, col_r = st.columns([1, 10])
-    with col_l:
-        st.image(logo_path, width=70)
-    with col_r:
-        st.title("RW play store live cheker")
+    with col_l: st.image(logo_path, width=70)
+    with col_r: st.title("RW play store live cheker")
 else:
     st.title("📊 RW play store live cheker")
 
 # 3. Initialize session state
-if 'all_matches' not in st.session_state:
-    st.session_state.all_matches = []
-if 'token' not in st.session_state:
-    st.session_state.token = None
-if 'is_done' not in st.session_state:
-    st.session_state.is_done = False
+if 'all_matches' not in st.session_state: st.session_state.all_matches = []
+if 'bulk_mode' not in st.session_state: st.session_state.bulk_mode = False
 
-# --- SIDEBAR SETTINGS ---
+def extract_id(url):
+    match = re.search(r'id=([a-zA-Z0-9._]+)', url)
+    return match.group(1) if match else None
+
+# --- SIDEBAR CONFIGURATION ---
 st.sidebar.header("⚙️ Configuration")
-app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
-count = st.sidebar.slider("Batch Size", 10, 1000, 500)
+
+# BULK CHECK TOGGLE BUTTON
+if st.sidebar.button("🔄 Switch to " + ("Single Mode" if st.session_state.bulk_mode else "Bulk Check")):
+    st.session_state.bulk_mode = not st.session_state.bulk_mode
+    st.session_state.all_matches = []
+
+if st.session_state.bulk_mode:
+    st.sidebar.warning("📁 BULK MODE ACTIVE")
+    bulk_links = st.sidebar.text_area("Enter Bulk Links (One per line):", height=200, placeholder="https://play.google.com/...\nhttps://play.google.com/...")
+else:
+    app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.sanatan.dharma")
+
+count = st.sidebar.slider("Batch Size (Per App)", 10, 1000, 500)
 score_filter = st.sidebar.selectbox("Filter by Stars", [None, 5, 4, 3, 2, 1], format_func=lambda x: "Show All" if x is None else f"{x} Stars")
 
 st.sidebar.subheader("📅 Date Filter")
 use_date = st.sidebar.checkbox("Filter by Specific Date", value=True)
-
 ist = pytz.timezone('Asia/Kolkata')
-current_ist_time = datetime.now(ist)
-target_date = st.sidebar.date_input("Select Date", current_ist_time)
+target_date = st.sidebar.date_input("Select Date", datetime.now(ist))
 
 st.sidebar.subheader("🔍 Hint Logic")
 hint_type = st.sidebar.radio("Hint Type", ["Show All", "No Hint (Normal .)", "Custom Symbol"], index=2)
 custom_symbol = st.sidebar.text_input("Enter Symbol", value="!") if hint_type == "Custom Symbol" else ""
 
-def extract_id(url):
-    match = re.search(r'id=([a-zA-Z0-9._]+)', url)
-    return match.group(1) if match else "App"
-
-def process_reviews(res):
-    new_matches = []
+def process_reviews(res, app_id):
+    matches = []
     ist_tz = pytz.timezone('Asia/Kolkata')
     for r in res:
-        # CONVERT to India Time (IST)
-        review_time_utc = r['at'].replace(tzinfo=pytz.utc)
-        review_time_ist = review_time_utc.astimezone(ist_tz)
-        review_date_ist = review_time_ist.date()
+        review_time_ist = r['at'].replace(tzinfo=pytz.utc).astimezone(ist_tz)
+        if use_date and review_time_ist.date() != target_date: continue
+        
         content = r['content'].strip()
-
-        if use_date and review_date_ist != target_date:
-            continue
-
         keep = False
-        if hint_type == "Show All":
-            keep = True
+        if hint_type == "Show All": keep = True
         elif hint_type == "No Hint (Normal .)":
             if len(content) > 0:
-                if content.endswith('.'):
-                    keep = not content.endswith('..')
-                else:
-                    keep = content[-1].isalnum()
+                keep = (content.endswith('.') and not content.endswith('..')) or content[-1].isalnum()
         else:
             keep = content.endswith(custom_symbol) if custom_symbol else True
 
         if keep:
-            new_matches.append({
+            matches.append({
+                "App ID": app_id,
                 "Date": review_time_ist.strftime('%Y-%m-%d %H:%M:%S'),
                 "User": r['userName'],
-                "Rating": r['score'],
-                "Review": r['content']
+                "Review": content
             })
-    return new_matches
+    return matches
 
-# --- ACTION BUTTONS ---
+# --- EXECUTION ---
 st.markdown("---")
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("🚀 Reset & Start Set 1"):
-        st.session_state.all_matches = []
-        st.session_state.token = None
-        st.session_state.is_done = False
-        app_id = extract_id(app_url)
-        if app_url:
-            with st.spinner("Fetching Data..."):
-                res, token = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
-                st.session_state.token = token
-                st.session_state.all_matches = process_reviews(res)
-                if not token: st.session_state.is_done = True
+if st.button("🚀 Run " + ("Bulk Process" if st.session_state.bulk_mode else "Single Check")):
+    st.session_state.all_matches = []
+    
+    if st.session_state.bulk_mode:
+        urls = [u.strip() for u in bulk_links.split('\n') if u.strip()]
+        if not urls: st.error("Please enter links!")
         else:
-            st.error("Invalid URL")
+            progress_bar = st.progress(0)
+            for i, url in enumerate(urls):
+                app_id = extract_id(url)
+                if app_id:
+                    with st.spinner(f"Processing: {app_id}"):
+                        res, _ = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
+                        st.session_state.all_matches.extend(process_reviews(res, app_id))
+                progress_bar.progress((i + 1) / len(urls))
+            st.success("Bulk Processing Complete!")
+    else:
+        app_id = extract_id(app_url)
+        if app_id:
+            with st.spinner(f"Fetching: {app_id}"):
+                res, _ = reviews(app_id, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
+                st.session_state.all_matches = process_reviews(res, app_id)
+        else: st.error("Invalid URL")
 
-with col2:
-    if st.session_state.token and not st.session_state.is_done:
-        if st.button("Next Batch ➡️"):
-            app_id = extract_id(app_url)
-            with st.spinner("Loading..."):
-                res, token = reviews(app_id, continuation_token=st.session_state.token)
-                st.session_state.token = token
-                st.session_state.all_matches.extend(process_reviews(res))
-                if not token: st.session_state.is_done = True
-
-# --- SIDEBAR QUICK COPY ---
-if st.session_state.all_matches:
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📋 Quick Copy")
-    app_id_label = extract_id(app_url)
-    date_display = target_date.strftime('%d %B %Y')
-    copy_text = f"{app_id_label} ({date_display}) :\n"
-    for i, m in enumerate(st.session_state.all_matches, 1):
-        copy_text += f"{i}. {m['User']}: {m['Review']}\n"
-    st.sidebar.text_area("Select All & Copy:", value=copy_text, height=300)
-
-# --- RESULTS & DOWNLOAD ---
-if st.session_state.is_done:
-    st.markdown('<div style="color: #2ecc71; font-weight: bold; font-size: 20px; border: 2px solid #2ecc71; padding: 10px; border-radius: 10px; text-align: center; background-color: rgba(46, 204, 113, 0.1);">✅ ALL REVIEWS SCANNED</div>', unsafe_allow_html=True)
-
+# --- RESULTS ---
 if st.session_state.all_matches:
     df = pd.DataFrame(st.session_state.all_matches)
-    st.success(f"Matches: {len(df)}")
     st.dataframe(df, use_container_width=True)
     
-    # Filename: AppID_Date.csv
-    app_id_name = extract_id(app_url)
-    formatted_date = target_date.strftime('%Y-%m-%d')
-    final_filename = f"{app_id_name}_{formatted_date}.csv"
+    # Filename Logic
+    file_date = target_date.strftime('%Y-%m-%d')
+    filename = f"Bulk_Report_{file_date}.csv" if st.session_state.bulk_mode else f"{extract_id(app_url)}_{file_date}.csv"
     
     csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Download Report", data=csv, file_name=final_filename, mime='text/csv')
+    st.download_button("📥 Download All Results", data=csv, file_name=filename, mime='text/csv')
