@@ -10,7 +10,7 @@ import io
 # 1. Page Config
 st.set_page_config(page_title="RW Pro Live Checker", page_icon="🚀", layout="wide")
 
-# 2. UI Styling (Standard Theme)
+# 2. UI Styling (Standard Clean Theme)
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
@@ -60,7 +60,10 @@ if st.session_state.bulk_mode:
 else:
     app_url = st.sidebar.text_input("Play Store URL:", value="https://play.google.com/store/apps/details?id=com.ideopay.user")
 
+# --- ALL FILTERS (STAR FILTER RESTORED) ---
 scan_depth = st.sidebar.select_slider("Scan Depth (Pages)", options=[1, 10, 50, 100, 200, 500], value=100)
+score_filter = st.sidebar.selectbox("Filter Stars", [None, 5, 4, 3, 2, 1], index=0) # <--- RESTORED
+
 target_date = st.sidebar.date_input("Select Date", datetime.now(pytz.timezone('Asia/Kolkata')))
 custom_symbol = st.sidebar.text_input("Symbol Hint (e.g. # or ,,)", value="#")
 
@@ -69,13 +72,17 @@ st.sidebar.subheader("📜 History")
 for h in st.session_state.history[-5:]: st.sidebar.caption(h)
 
 # --- LOGIC ---
-def fetch_logic(aid, target_dt, depth):
+def fetch_logic(aid, target_dt, depth, star_val):
     all_raw = []
     token = None
     ist_tz = pytz.timezone('Asia/Kolkata')
     for _ in range(depth):
         try:
-            res, token = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=100, continuation_token=token)
+            res, token = reviews(
+                aid, lang='en', country='in', sort=Sort.NEWEST, 
+                count=100, continuation_token=token,
+                filter_score_with=star_val # <--- APPLY STAR FILTER
+            )
             if not res: break
             all_raw.extend(res)
             last_dt = res[-1]['at'].replace(tzinfo=pytz.utc).astimezone(ist_tz).date()
@@ -106,12 +113,13 @@ if st.button("🚀 Run Professional Check"):
         aid = extract_id(url)
         if aid:
             with st.spinner(f"Scanning {aid}..."):
-                found = fetch_logic(aid, target_date, scan_depth)
+                found = fetch_logic(aid, target_date, scan_depth, score_filter)
                 st.session_state.all_matches.extend(found)
                 st.session_state.summary_dict[aid] = len(found)
                 st.session_state.history.append(f"{datetime.now().strftime('%H:%M')} - {aid} ({len(found)})")
         progress_bar.progress((i + 1) / len(urls))
     st.balloons()
+    st.toast('✅ Scan Complete!', icon='🎉')
 
 # --- RESULTS ---
 if st.session_state.summary_dict:
@@ -131,6 +139,14 @@ if st.session_state.summary_dict:
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         pd.DataFrame(st.session_state.all_matches).to_excel(writer, index=False, sheet_name='Data')
     
-    col1.download_button("Excel Report", output.getvalue(), f"Report_{target_date}.xlsx", use_container_width=True)
+    # FILENAME METHOD: AppID_Date.xlsx
+    file_date = target_date.strftime('%Y-%m-%d')
+    if st.session_state.bulk_mode:
+        final_filename = f"Bulk_Report_{file_date}.xlsx"
+    else:
+        current_aid = extract_id(app_url) if not st.session_state.bulk_mode else "Report"
+        final_filename = f"{current_aid}_{file_date}.xlsx"
+
+    col1.download_button("Excel Report", output.getvalue(), final_filename, use_container_width=True)
     col2.button("PDF Summary (Coming Soon)", use_container_width=True)
     col3.button("Sync to Google Sheets", use_container_width=True)
