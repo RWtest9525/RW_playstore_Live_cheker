@@ -3,3 +3,4 @@ pandas
 google-play-scraper
 pytz
 Pillow
+xlsxwriter
