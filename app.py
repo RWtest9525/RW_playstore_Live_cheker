@@ -70,7 +70,6 @@ else:
 # FILTERS
 scan_depth = st.sidebar.select_slider("Scan Depth (Pages)", options=[1, 10, 50, 100, 200, 500], value=100)
 
-# Star Filter using Session State
 star_options = [None, 5, 4, 3, 2, 1]
 st.session_state.stored_stars = st.sidebar.selectbox(
     "Filter Stars", 
@@ -80,7 +79,6 @@ st.session_state.stored_stars = st.sidebar.selectbox(
 
 target_date = st.sidebar.date_input("Select Date", datetime.now(pytz.timezone('Asia/Kolkata')))
 
-# Hint Mode using Session State
 hint_options = ["Show All", "No Hint (Normal .)", "Custom Symbol"]
 st.session_state.stored_hint = st.sidebar.radio(
     "Hint Mode", 
@@ -93,17 +91,22 @@ if st.session_state.stored_hint == "Custom Symbol":
     st.session_state.stored_symbol = st.sidebar.text_input("Enter Symbol", value=st.session_state.stored_symbol)
     custom_symbol = st.session_state.stored_symbol
 
-# --- CLICKABLE HISTORY LOGIC ---
+# --- CLICKABLE HISTORY WITH ERROR SAFETY ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📜 History (Click to Load & Run)")
+
+if st.sidebar.button("🗑️ Clear History"):
+    st.session_state.history_list = []
+    st.rerun()
+
 for h in st.session_state.history_list[-5:]:
-    if st.sidebar.button(h['label'], key=f"btn_{h['label']}"):
-        # Load all previous settings from this history item
-        st.session_state.app_url_input = h['url']
-        st.session_state.stored_stars = h['stars']
-        st.session_state.stored_hint = h['hint_mode']
-        st.session_state.stored_symbol = h['symbol']
-        st.session_state.trigger_run = True # Tell the app to run immediately
+    if st.sidebar.button(h.get('label', 'Unknown Scan'), key=f"btn_{h.get('label', 'id')}"):
+        # Load settings with safety .get() to prevent KeyErrors
+        st.session_state.app_url_input = h.get('url', "https://play.google.com/store/apps/details?id=com.ideopay.user")
+        st.session_state.stored_stars = h.get('stars', None)
+        st.session_state.stored_hint = h.get('hint_mode', "Custom Symbol")
+        st.session_state.stored_symbol = h.get('symbol', "#")
+        st.session_state.trigger_run = True 
         st.rerun()
 
 # --- FETCH LOGIC ---
@@ -141,11 +144,10 @@ def fetch_logic(aid, target_dt, depth, star_val):
     return matches
 
 # --- EXECUTION ---
-# Run if the button is clicked OR if triggered by history
 run_pressed = st.button("🚀 Run Professional Check")
 
 if run_pressed or st.session_state.trigger_run:
-    st.session_state.trigger_run = False # Reset trigger
+    st.session_state.trigger_run = False 
     
     urls = [u.strip() for u in (bulk_links.split('\n') if st.session_state.bulk_mode else [st.session_state.app_url_input]) if u.strip()]
     st.session_state.all_matches = []
@@ -160,7 +162,6 @@ if run_pressed or st.session_state.trigger_run:
                 st.session_state.all_matches.extend(found)
                 st.session_state.summary_dict[aid] = len(found)
                 
-                # Update History List
                 time_now = datetime.now().strftime('%H:%M')
                 history_entry = {
                     "aid": aid,
@@ -170,7 +171,6 @@ if run_pressed or st.session_state.trigger_run:
                     "symbol": st.session_state.stored_symbol,
                     "label": f"{time_now} - {aid} ({len(found)})"
                 }
-                # Avoid duplicate labels in history
                 if not any(x['label'] == history_entry['label'] for x in st.session_state.history_list):
                     st.session_state.history_list.append(history_entry)
                     
@@ -193,6 +193,7 @@ if st.session_state.summary_dict:
     st.subheader("📥 Export & Reporting")
     col1, col2, col3 = st.columns(3)
     
+    # EXCEL FILENAME LOGIC PRESERVED
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         start_row = 0
@@ -203,7 +204,11 @@ if st.session_state.summary_dict:
                 start_row += len(app_data) + 2
     
     file_date = target_date.strftime('%Y-%m-%d')
-    fname = f"Bulk_Report_{file_date}.xlsx" if st.session_state.bulk_mode else f"{extract_id(st.session_state.app_url_input)}_{file_date}.xlsx"
+    if st.session_state.bulk_mode:
+        fname = f"Bulk_Report_{file_date}.xlsx"
+    else:
+        aid_label = extract_id(st.session_state.app_url_input) if extract_id(st.session_state.app_url_input) else "Report"
+        fname = f"{aid_label}_{file_date}.xlsx"
 
     col1.download_button("Excel Report", output.getvalue(), fname, use_container_width=True)
     col2.button("PDF Summary (Coming Soon)", use_container_width=True)
