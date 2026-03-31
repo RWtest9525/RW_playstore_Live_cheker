@@ -34,7 +34,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- HEADER ---
+# --- HEADER SECTION ---
 logo_url = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
 st.markdown(f"""
     <div class="header-container">
@@ -48,12 +48,13 @@ if 'all_matches' not in st.session_state: st.session_state.all_matches = []
 if 'bulk_mode' not in st.session_state: st.session_state.bulk_mode = False
 
 def extract_id(url):
+    # Handles both clean IDs and URLs with extra parameters
     match = re.search(r'id=([a-zA-Z0-9._]+)', url)
     return match.group(1) if match else None
 
 # --- SIDEBAR CONFIG ---
 st.sidebar.header("⚙️ Configuration")
-if st.sidebar.button("🔄 Switch Mode"):
+if st.sidebar.button("🔄 Switch to " + ("Single Mode" if st.session_state.bulk_mode else "Bulk Check")):
     st.session_state.bulk_mode = not st.session_state.bulk_mode
     st.session_state.all_matches = []
 
@@ -103,7 +104,8 @@ st.markdown("---")
 if st.button("🚀 Run Check"):
     st.session_state.all_matches = []
     if st.session_state.bulk_mode:
-        urls = [u.strip() for u in bulk_links.split('\n') if u.strip()]
+        # Split by newlines and handle potential spaces or dots at the end of URLs
+        urls = [u.strip().rstrip('.') for u in bulk_links.split('\n') if u.strip()]
         for url in urls:
             aid = extract_id(url)
             if aid:
@@ -116,26 +118,24 @@ if st.button("🚀 Run Check"):
         if aid:
             res, _ = reviews(aid, lang='en', country='in', sort=Sort.NEWEST, count=count, filter_score_with=score_filter)
             st.session_state.all_matches = process_reviews(res, aid)
-    
-    if not st.session_state.all_matches:
-        st.warning("⚠️ No reviews found matching these filters for this date.")
 
-# --- DISPLAY ---
+# --- DISPLAY & EXCEL ---
 if st.session_state.all_matches:
+    # 1. Total Counter
     st.markdown(f'<div class="small-counter">Total Live: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
-    df = pd.DataFrame(st.session_state.all_matches)
     
+    df = pd.DataFrame(st.session_state.all_matches)
     desired_order = ["User", "Review", "App ID", "Rating", "Date", "Posting Time"]
     df = df[desired_order]
     st.dataframe(df, use_container_width=True)
     
-    # Summary Table
+    # 2. Summary
     st.markdown("### 📊 App Wise Summary")
     summary_df = df['App ID'].value_counts().reindex(df['App ID'].unique()).reset_index()
     summary_df.columns = ['App ID', 'Live Count']
     st.table(summary_df)
     
-    # EXCEL EXPORT
+    # 3. Excel Download with Gap Logic
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         start_row = 0
@@ -156,7 +156,7 @@ if st.session_state.all_matches:
         summary_sheet.write(len(summary_df) + 1, 0, "GRAND TOTAL", header_fmt)
         summary_sheet.write(len(summary_df) + 1, 1, len(df), header_fmt)
 
-    # DYNAMIC FILENAME FIX
+    # 4. Filename Logic
     file_date = target_date.strftime('%Y-%m-%d')
     if st.session_state.bulk_mode:
         final_filename = f"Bulk_Report_{file_date}.xlsx"
