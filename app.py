@@ -122,24 +122,30 @@ if st.session_state.all_matches:
     st.markdown(f'<div class="small-counter">Total Live: <b>{len(st.session_state.all_matches)}</b></div>', unsafe_allow_html=True)
     df = pd.DataFrame(st.session_state.all_matches)
     
-    # ORDER: User, Review first, metadata last
     desired_order = ["User", "Review", "App ID", "Rating", "Date", "Posting Time"]
     df = df[desired_order]
     st.dataframe(df, use_container_width=True)
     
-    # APP SUMMARY ON SCREEN
+    # Summary Table on screen
     st.markdown("### 📊 App Wise Summary")
-    summary_df = df['App ID'].value_counts().reset_index()
+    summary_df = df['App ID'].value_counts().reindex(df['App ID'].unique()).reset_index()
     summary_df.columns = ['App ID', 'Live Count']
     st.table(summary_df)
     
-    # EXCEL EXPORT (Fixing Summary Count)
+    # EXCEL EXPORT
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Data')
+        # 1. Data Sheet with Gaps
+        start_row = 0
+        unique_apps = df['App ID'].unique()
+        for app_id in unique_apps:
+            app_df = df[df['App ID'] == app_id]
+            app_df.to_excel(writer, index=False, sheet_name='Data', startrow=start_row)
+            # Increment start_row: (len of data) + 1 (for header) + 1 (for the gap)
+            start_row += len(app_df) + 2
+            
+        # 2. Dedicated Summary Sheet
         workbook = writer.book
-        
-        # Create a dedicated Summary Sheet
         summary_sheet = workbook.add_worksheet('Summary')
         header_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
         
