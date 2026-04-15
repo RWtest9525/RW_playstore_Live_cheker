@@ -16,7 +16,7 @@ st.set_page_config(page_title="RW Pro Live Checker", page_icon="🚀", layout="w
 
 # 2. UI Styling
 st.markdown(
-    """
+  
     <style>
     .block-container { padding-top: 2rem !important; }
     .stDataFrame td { white-space: normal !important; word-wrap: break-word !important; }
