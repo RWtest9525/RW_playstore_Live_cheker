@@ -8,7 +8,6 @@ import pandas as pd
 import pytz
 import streamlit as st
 from google_play_scraper import Sort, reviews
-from PIL import Image
 
 # 1. Page Config
 st.set_page_config(page_title="RW Pro Live Checker", page_icon="🚀", layout="wide")
@@ -25,39 +24,16 @@ st.markdown(
         background: linear-gradient(135deg, #f8fbff 0%, #edf4ff 100%) !important;
         color: #0f172a !important;
     }
-    .small-counter {
-        border: 1px solid #2ecc71;
-        background-color: #f0fff4;
-        padding: 8px 15px;
-        border-radius: 8px;
-        margin-bottom: 15px;
-        display: inline-block;
-    }
-    .small-counter b { color: #16a34a; font-size: 18px; }
     .brand-wrap {
         display: flex; align-items: center; justify-content: space-between;
         border: 1px solid #e5e7eb; border-radius: 16px; padding: 12px 16px;
         margin-bottom: 14px; background: white;
     }
+    .report-card {
+        border: 1px solid #dbeafe; border-radius: 14px; padding: 12px 14px;
+        background: #f8fbff; margin-bottom: 10px;
+    }
     </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# --- HEADER ---
-logo_url = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
-st.markdown(
-    f"""
-    <div class="brand-wrap">
-      <div style="display: flex; align-items: center; gap: 14px;">
-        <img src="{logo_url}" width="54">
-        <div>
-          <h2 style="margin:0;">RW Playstore Live Checker</h2>
-          <p style="margin:0; color:#64748b;">Premium Review Intelligence</p>
-        </div>
-      </div>
-      <div style="text-align:right; font-size:0.85rem; color:#64748b;">Company: Reviews World Digital</div>
-    </div>
     """,
     unsafe_allow_html=True,
 )
@@ -70,10 +46,8 @@ DAILY_DB_PATH = os.path.join(DATA_DIR, "daily_reports.json")
 # --------- Helpers ---------
 def ensure_db_files():
     os.makedirs(DATA_DIR, exist_ok=True)
-    for path in [APP_DB_PATH, DAILY_DB_PATH]:
-        if not os.path.exists(path):
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump([], f)
+    if not os.path.exists(APP_DB_PATH): save_json(APP_DB_PATH, [])
+    if not os.path.exists(DAILY_DB_PATH): save_json(DAILY_DB_PATH, [])
 
 def load_json(path):
     try:
@@ -89,29 +63,20 @@ def extract_id(url):
     match = re.search(r"id=([a-zA-Z0-9._]+)", url)
     return match.group(1) if match else url.strip()
 
-def review_matches_hint(text, hints):
-    if not hints: return True
-    return any(text.strip().endswith(hint) for hint in hints)
+def normalize_csv_values(raw):
+    return [x.strip() for x in str(raw).split(",") if x.strip()]
 
-# --------- CORE FETCH LOGIC (FIXED) ---------
+# --------- CORE FETCH LOGIC (ANTI-BEN HOEK) ---------
 def fetch_logic(aid, target_dt, depth_pages, star_values=None, hint_values=None):
     all_raw = []
     token = None
-    
-    # "Anti-Ben Hoek" Strategy: Continue even if pinned reviews appear
-    # We only stop when we see reviews that are actually 2 days old
-    stop_date = target_dt - timedelta(days=2)
+    stop_date = target_dt - timedelta(days=2) # Deep search buffer
     
     for _ in range(depth_pages):
         try:
-            res, token = reviews(
-                aid, lang="en", country="in",
-                sort=Sort.NEWEST, count=100, continuation_token=token
-            )
+            res, token = reviews(aid, lang="en", country="in", sort=Sort.NEWEST, count=100, continuation_token=token)
             if not res: break
             all_raw.extend(res)
-            
-            # Check the date of the last item in this batch
             last_item_dt = res[-1]["at"].replace(tzinfo=pytz.utc).astimezone(IST_TZ).date()
             if last_item_dt < stop_date: break
             if not token: break
@@ -121,86 +86,142 @@ def fetch_logic(aid, target_dt, depth_pages, star_values=None, hint_values=None)
     matches = []
     for r in all_raw:
         rev_dt = r["at"].replace(tzinfo=pytz.utc).astimezone(IST_TZ).date()
-        
-        # 1. Date Filter (The most important check)
         if rev_dt != target_dt: continue
-        
-        # 2. Star Filter
         if stars_set and int(r.get("score", 0)) not in stars_set: continue
-        
-        # 3. Hint Filter
         text = (r.get("content") or "").strip()
-        if not review_matches_hint(text, hint_values): continue
+        if hint_values and not any(text.endswith(h) for h in hint_values): continue
 
         matches.append({
             "User": r.get("userName", "Unknown"),
             "User Logo": r.get("userImage", ""),
-            "Rating": f"{r.get('score', 0)}/5",
             "Review": text,
-            "Date": rev_dt.strftime("%Y-%m-%d"),
-            "App ID": aid
+            "App ID": aid,
+            "Rating": f"{r.get('score', 0)}/5",
+            "Date": rev_dt.strftime("%Y-%m-%d")
         })
     return matches
+
+# --------- Logic for Automation ---------
+def run_due_daily_jobs(scan_depth=500):
+    apps = load_json(APP_DB_PATH)
+    reports = load_json(DAILY_DB_PATH)
+    now_ist = datetime.now(IST_TZ)
+    report_index = {(r["app_id"], r["report_date"]) for r in reports}
+    generated = 0
+
+    for app in apps:
+        created_dt = datetime.fromisoformat(app["created_at"])
+        due_date = (created_dt + timedelta(days=app.get("days_after", 0))).date()
+        
+        # Check if due today
+        report_key = (app["app_id"], due_date.strftime("%Y-%m-%d"))
+        if due_date <= now_ist.date() and report_key not in report_index:
+            found = fetch_logic(app["app_id"], due_date, scan_depth // 100, app.get("stars", []), app.get("hints", []))
+            reports.append({
+                "app_id": app["app_id"],
+                "app_name": app["app_name"],
+                "report_date": due_date.strftime("%Y-%m-%d"),
+                "users": sorted({x["User"] for x in found}),
+                "detailed_rows": found,
+                "generated_at": now_ist.isoformat()
+            })
+            generated += 1
+    
+    if generated: save_json(DAILY_DB_PATH, reports)
+    return generated
 
 # --------- Pages ---------
 def render_manual_page():
     st.subheader("Professional Review Checker")
-    
     if "manual_results" not in st.session_state: st.session_state.manual_results = []
     
     mode = st.sidebar.radio("Mode", ["Single App", "Bulk Links"])
     target_date = st.sidebar.date_input("Target Date", datetime.now(IST_TZ).date())
-    scan_depth = st.sidebar.select_slider("Depth", options=[1, 5, 10, 20, 50], value=10)
+    scan_depth = st.sidebar.select_slider("Depth", options=[1, 5, 10, 50, 100], value=10)
+    hint_val = st.sidebar.text_input("Hint (e.g. #)", value="#")
     
-    hint_val = st.sidebar.text_input("Hint Symbol (Optional)", value="#")
-    hints = [hint_val] if hint_val else []
-
     if mode == "Single App":
-        url = st.sidebar.text_input("Play Store Link", "https://play.google.com/store/apps/details?id=com.ideopay.user")
-        urls = [url]
+        urls = [st.sidebar.text_input("Play Store Link", "")]
     else:
-        bulk_text = st.sidebar.text_area("Paste Links (One per line)")
-        urls = [u.strip() for u in bulk_text.split("\n") if u.strip()]
+        urls = [u.strip() for u in st.sidebar.text_area("Paste Links").split("\n") if u.strip()]
 
-    if st.button("🚀 Run Live Check"):
+    if st.button("🚀 Run Check"):
         st.session_state.manual_results = []
-        progress = st.progress(0)
-        
-        for idx, u in enumerate(urls):
+        for u in urls:
             aid = extract_id(u)
-            with st.spinner(f"Scanning: {aid}"):
-                found = fetch_logic(aid, target_date, scan_depth, hint_values=hints)
-                st.session_state.manual_results.extend(found)
-            progress.progress((idx + 1) / len(urls))
-        
-        st.success(f"Scanning Complete! Found {len(st.session_state.manual_results)} live reviews.")
+            if aid: st.session_state.manual_results.extend(fetch_logic(aid, target_date, scan_depth, hint_values=[hint_val] if hint_val else []))
+        st.success(f"Found {len(st.session_state.manual_results)} reviews.")
 
     if st.session_state.manual_results:
         df = pd.DataFrame(st.session_state.manual_results)
-        st.markdown(f'<div class="small-counter">Total Live: <b>{len(df)}</b></div>', unsafe_allow_html=True)
-        
-        # Display data
         st.dataframe(df, use_container_width=True)
-        
-        # Export
+        # Excel Export
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Live_Report")
-        
-        st.download_button("📥 Download Excel Report", output.getvalue(), f"Report_{target_date}.xlsx", "application/vnd.ms-excel")
+            df.to_excel(writer, index=False)
+        st.download_button("📥 Excel Report", output.getvalue(), "Report.xlsx")
 
-# --------- Navigation ---------
+def render_admin_page():
+    st.subheader("Admin Panel")
+    apps = load_json(APP_DB_PATH)
+    
+    with st.form("add_app", clear_on_submit=True):
+        name = st.text_input("App Name")
+        link = st.text_input("Play Store Link")
+        hints = st.text_input("Hints (comma separated)")
+        stars = st.text_input("Stars (comma separated)", value="5")
+        days = st.number_input("Days After (Set 0 for today)", min_value=0, value=7) # <--- 0 DAY ENABLED
+        if st.form_submit_button("Save App"):
+            aid = extract_id(link)
+            apps.append({
+                "app_name": name, "app_id": aid, "app_url": link,
+                "hints": normalize_csv_values(hints),
+                "stars": [int(s) for s in normalize_csv_values(stars) if s.isdigit()],
+                "days_after": int(days), "created_at": datetime.now(IST_TZ).isoformat()
+            })
+            save_json(APP_DB_PATH, apps)
+            st.success("App added!")
+            st.rerun()
+
+    st.markdown("### Existing Apps")
+    for i, app in enumerate(apps):
+        cols = st.columns([3, 1, 1])
+        cols[0].write(f"**{app['app_name']}** ({app['app_id']}) - Days: {app['days_after']}")
+        if cols[1].button("Copy", key=f"cp_{i}"):
+            new_app = app.copy()
+            new_app["app_name"] += " (Copy)"
+            apps.append(new_app); save_json(APP_DB_PATH, apps); st.rerun()
+        if cols[2].button("Delete", key=f"del_{i}"):
+            apps.pop(i); save_json(APP_DB_PATH, apps); st.rerun()
+
+def render_daily_list_page():
+    st.subheader("Generated Lists")
+    run_due_daily_jobs()
+    reports = load_json(DAILY_DB_PATH)
+    
+    if not reports:
+        st.info("No reports generated yet.")
+    else:
+        for i, r in enumerate(reversed(reports)):
+            with st.expander(f"{r['app_name']} - {r['report_date']} ({len(r['users'])} live)"):
+                st.write(f"Generated at: {r['generated_at']}")
+                st.write(", ".join(r['users']))
+                if st.button("Delete Report", key=f"del_rep_{i}"):
+                    reports.remove(r); save_json(DAILY_DB_PATH, reports); st.rerun()
+
+# --------- Main ---------
 ensure_db_files()
-if "page" not in st.session_state: st.session_state.page = "home"
+logo_url = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
+st.markdown(f'<div class="brand-wrap"><img src="{logo_url}" width="54"><h2>RW Live Checker</h2></div>', unsafe_allow_html=True)
 
+if "page" not in st.session_state: st.session_state.page = "home"
 if st.session_state.page == "home":
-    st.subheader("Welcome, Yash")
-    col1, col2 = st.columns(2)
-    if col1.button("✨ Make New List"): 
-        st.session_state.page = "manual"; st.rerun()
-    if col2.button("⚙️ Admin Panel"): 
-        st.session_state.page = "admin"; st.rerun()
+    c1, c2, c3 = st.columns(3)
+    if c1.button("Make List"): st.session_state.page = "manual"; st.rerun()
+    if c2.button("Add App"): st.session_state.page = "admin"; st.rerun()
+    if c3.button("View List"): st.session_state.page = "daily"; st.rerun()
 else:
-    if st.button("⬅️ Back to Home"): 
-        st.session_state.page = "home"; st.rerun()
+    if st.button("⬅️ Back"): st.session_state.page = "home"; st.rerun()
     if st.session_state.page == "manual": render_manual_page()
+    elif st.session_state.page == "admin": render_admin_page()
+    elif st.session_state.page == "daily": render_daily_list_page()
