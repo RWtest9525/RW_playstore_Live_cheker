@@ -12,24 +12,49 @@ from google_play_scraper import Sort, reviews
 # 1. Page Config
 st.set_page_config(page_title="RW Pro Live Checker", page_icon="🚀", layout="wide")
 
-# 2. Premium Professional CSS
+# 2. Premium Professional CSS (Indigo & Slate Theme)
 st.markdown(
     """
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
     html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
+    
     .main { background: #fdfdfd; }
-    .header-box {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        padding: 2rem; border-radius: 24px; color: white; margin-bottom: 2rem;
+    
+    /* Header Styling */
+    .header-container {
+        background: #1e1b4b; /* Indigo 950 */
+        padding: 2rem;
+        border-radius: 20px;
+        color: white;
+        margin-bottom: 2rem;
+        display: flex;
+        align-items: center;
+        gap: 20px;
     }
+    
+    /* Sidebar Overhaul */
+    [data-testid="stSidebar"] {
+        background-color: #f8fafc;
+        border-right: 1px solid #e2e8f0;
+    }
+    
+    /* Card Design */
     .report-card {
-        background: white; border: 1px solid #f1f5f9; border-radius: 16px;
-        padding: 1.25rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    .badge { padding: 4px 12px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; }
-    .badge-time { background: #fef9c3; color: #854d0e; }
-    .badge-live { background: #dcfce7; color: #166534; }
+    
+    /* Global Buttons */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -39,6 +64,7 @@ IST_TZ = pytz.timezone("Asia/Kolkata")
 DATA_DIR = "data"
 APP_DB_PATH = os.path.join(DATA_DIR, "apps_config.json")
 DAILY_DB_PATH = os.path.join(DATA_DIR, "daily_reports.json")
+LOGO_URL = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
 
 # --------- Logic Core ---------
 def ensure_db_files():
@@ -62,7 +88,7 @@ def extract_id(url):
 def fetch_logic(aid, target_dt, depth_pages, stars=None, hints=None):
     all_raw = []
     token = None
-    stop_date = target_dt - timedelta(days=2)
+    stop_date = target_dt - timedelta(days=2) # Anti-Ben Hoek Safety
     for _ in range(depth_pages):
         try:
             res, token = reviews(aid, lang="en", country="in", sort=Sort.NEWEST, count=100, continuation_token=token)
@@ -72,6 +98,7 @@ def fetch_logic(aid, target_dt, depth_pages, stars=None, hints=None):
             if last_dt < stop_date: break
             if not token: break
         except: break
+    
     matches = []
     for r in all_raw:
         rev_dt = r["at"].replace(tzinfo=pytz.utc).astimezone(IST_TZ).date()
@@ -89,17 +116,12 @@ def run_automation():
     report_index = {(r["app_id"], r["report_date"]) for r in reports}
     updated = False
     for app in apps:
-        # SAFETY FIX: Use .get() to prevent KeyError if field is missing
-        created_at_raw = app.get("created_at", datetime.now(IST_TZ).isoformat())
-        created_dt = datetime.fromisoformat(created_at_raw)
+        created_dt = datetime.fromisoformat(app.get("created_at", now.isoformat()))
         days_after = app.get("days_after", 0)
         target_date = (created_dt + timedelta(days=days_after)).date()
         
         run_time_str = app.get("run_time", "08:00 PM")
-        try:
-            run_time_obj = datetime.strptime(run_time_str, "%I:%M %p").time()
-        except:
-            run_time_obj = datetime.strptime("08:00 PM", "%I:%M %p").time()
+        run_time_obj = datetime.strptime(run_time_str, "%I:%M %p").time()
 
         if target_date <= now.date() and now.time() >= run_time_obj:
             report_key = (app["app_id"], target_date.strftime("%Y-%m-%d"))
@@ -114,90 +136,92 @@ def run_automation():
                 updated = True
     if updated: save_json(DAILY_DB_PATH, reports)
 
-# --------- Pages ---------
+# --------- Navigation Content ---------
+def render_home():
+    st.title("Welcome back, Yash")
+    st.write("Current Status: All systems operational. Scraper running on IST.")
+
 def render_manual():
-    st.subheader("Manual Review Scan")
-    target_date = st.date_input("Select Review Date", datetime.now(IST_TZ).date())
-    urls = st.text_area("Paste Play Store Links (One per line)")
-    hint = st.text_input("Hint Symbol", "#")
-    if st.button("🚀 Run Professional Check"):
-        links = [u.strip() for u in urls.split("\n") if u.strip()]
-        all_results = []
-        for l in links:
-            aid = extract_id(l)
-            with st.spinner(f"Checking {aid}..."):
-                all_results.extend(fetch_logic(aid, target_date, 10, hints=[hint] if hint else []))
-        if all_results:
-            df = pd.DataFrame(all_results)
-            st.success(f"Total Live Found: {len(df)}")
-            st.dataframe(df, use_container_width=True)
+    st.subheader("Manual Bulk Checker")
+    t_date = st.date_input("Filter Date", datetime.now(IST_TZ).date())
+    urls = st.text_area("Paste Links (One per line)")
+    hint = st.text_input("Hint (Optional)", "#")
+    if st.button("🚀 Start Live Scan"):
+        all_res = []
+        for u in [x.strip() for x in urls.split("\n") if x.strip()]:
+            aid = extract_id(u)
+            with st.spinner(f"Scanning {aid}..."):
+                all_res.extend(fetch_logic(aid, t_date, 10, hints=[hint] if hint else []))
+        if all_res:
+            df = pd.DataFrame(all_res)
+            st.success(f"Verified {len(df)} Live Reviews")
+            st.dataframe(df, use_container_width=True, hide_index=True)
             output = io.BytesIO()
-            df.to_excel(output, index=False); st.download_button("📥 Download Report", output.getvalue(), "Report.xlsx")
+            df.to_excel(output, index=False)
+            st.download_button("📥 Excel Export", output.getvalue(), f"Report_{t_date}.xlsx")
 
 def render_admin():
-    st.subheader("Setup New Campaign")
+    st.subheader("Campaign Setup")
     apps = load_json(APP_DB_PATH)
-    with st.form("add_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        name = col1.text_input("App Name")
-        link = col2.text_input("Play Store Link")
-        hints = col1.text_input("Hints (comma separated)")
-        days = col2.number_input("Days After (0 = Today)", min_value=0, value=7)
-        time_val = st.selectbox("Run Time (IST)", ["08:00 AM", "12:00 PM", "04:00 PM", "08:00 PM", "10:00 PM", "11:59 PM"])
-        if st.form_submit_button("💾 Save App Config"):
+    with st.form("add_app"):
+        c1, c2 = st.columns(2)
+        n = c1.text_input("Client Name")
+        l = c2.text_input("App Link")
+        h = c1.text_input("Hints (e.g. #, @@)")
+        d = c2.number_input("Days After (0 = Today)", min_value=0, value=7)
+        rt = st.selectbox("Run Time (IST)", ["08:00 AM", "12:00 PM", "04:00 PM", "08:00 PM", "10:00 PM", "11:59 PM"])
+        if st.form_submit_button("💾 Save App"):
             apps.append({
-                "app_name": name, "app_id": extract_id(link), "app_url": link,
-                "hints": [x.strip() for x in hints.split(",") if x.strip()],
-                "days_after": int(days), "run_time": time_val, "created_at": datetime.now(IST_TZ).isoformat()
+                "app_name": n, "app_id": extract_id(l), "app_url": l,
+                "hints": [x.strip() for x in h.split(",") if x.strip()],
+                "days_after": int(d), "run_time": rt, "created_at": datetime.now(IST_TZ).isoformat()
             })
             save_json(APP_DB_PATH, apps); st.rerun()
 
-    st.markdown("---")
-    # SAFETY FIX: Handling missing keys in loop
+    st.divider()
     for i, app in enumerate(apps):
-        name = app.get("app_name", "Unknown")
-        aid = app.get("app_id", "Unknown")
-        days = app.get("days_after", 0)
-        rtime = app.get("run_time", "08:00 PM")
         with st.container():
-            c1, c2, c3 = st.columns([4, 1, 1])
-            c1.markdown(f"**{name}** | `{aid}`<br><span class='badge badge-time'>Every {days} Days at {rtime}</span>", unsafe_allow_html=True)
-            if c2.button("📋 Copy", key=f"cp_{i}"):
-                new_app = app.copy(); new_app["app_name"] = name + " (Copy)"
-                apps.append(new_app); save_json(APP_DB_PATH, apps); st.rerun()
-            if c3.button("🗑️ Del", key=f"dl_{i}"):
+            col_a, col_b, col_c = st.columns([4, 1, 1])
+            col_a.markdown(f"**{app.get('app_name')}** | `{app.get('app_id')}`<br><small>Schedule: {app.get('run_time')} (Day {app.get('days_after')})</small>", unsafe_allow_html=True)
+            if col_b.button("📋 Copy", key=f"cp{i}"):
+                apps.append(app.copy()); save_json(APP_DB_PATH, apps); st.rerun()
+            if col_c.button("🗑️ Del", key=f"dl{i}"):
                 apps.pop(i); save_json(APP_DB_PATH, apps); st.rerun()
 
 def render_daily():
-    st.subheader("Generated Daily Reports")
-    if st.button("🔄 Refresh & Check for New Lists"): run_automation(); st.rerun()
+    st.subheader("Daily History")
+    if st.button("🔄 Sync New Reports"): run_automation(); st.rerun()
     reports = load_json(DAILY_DB_PATH)
-    if not reports:
-        st.info("No reports yet. Add an app with '0 days' and past 'Run Time' to generate one.")
-    else:
-        for i, r in enumerate(reversed(reports)):
-            with st.container():
-                st.markdown(f"""<div class="report-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:800;">{r.get('app_name', 'Unknown')}</span>
-                        <span class="badge badge-live">{len(r.get('users', []))} Live</span>
-                    </div>
-                    <p style="margin:5px 0; color:#64748b; font-size:0.85rem;">Date: {r.get('report_date')} | Generated: {r.get('generated_at')}</p>
-                </div>""", unsafe_allow_html=True)
-                if st.button("🗑️ Delete Report", key=f"dre_{i}"):
-                    reports.remove(r); save_json(DAILY_DB_PATH, reports); st.rerun()
+    if not reports: st.info("No auto-reports yet.")
+    for i, r in enumerate(reversed(reports)):
+        with st.expander(f"{r.get('app_name')} - {r.get('report_date')} ({len(r.get('users'))} Live)"):
+            st.write(", ".join(r.get("users")))
+            if st.button("Delete Report", key=f"dr{i}"):
+                reports.remove(r); save_json(DAILY_DB_PATH, reports); st.rerun()
 
-# --------- Main Nav ---------
+# --------- Main App ---------
 ensure_db_files()
-st.markdown(f'<div class="header-box"><h1>RW PRO LIVE CHECKER</h1></div>', unsafe_allow_html=True)
-if "page" not in st.session_state: st.session_state.page = "home"
-with st.sidebar:
-    if st.button("🏠 Home", use_container_width=True): st.session_state.page = "home"; st.rerun()
-    if st.button("📊 Manual Scan", use_container_width=True): st.session_state.page = "manual"; st.rerun()
-    if st.button("⚙️ Setup App", use_container_width=True): st.session_state.page = "admin"; st.rerun()
-    if st.button("📁 Daily Lists", use_container_width=True): st.session_state.page = "daily"; st.rerun()
 
-if st.session_state.page == "home": st.markdown("### Welcome, Yash")
+# LOGO FIX: Using st.columns to center the header content properly
+col_logo, col_title = st.columns([1, 6])
+with col_logo:
+    st.image(LOGO_URL, width=80)
+with col_title:
+    st.title("RW PRO LIVE CHECKER")
+    st.write("Professional Bulk Scraper for Reviews World")
+
+if "page" not in st.session_state: st.session_state.page = "home"
+
+with st.sidebar:
+    st.markdown("### 🧭 Main Navigation")
+    if st.button("🏠 Home Dashboard", use_container_width=True): st.session_state.page = "home"; st.rerun()
+    if st.button("📊 Manual Bulk Check", use_container_width=True): st.session_state.page = "manual"; st.rerun()
+    if st.button("⚙️ Campaign Setup", use_container_width=True): st.session_state.page = "admin"; st.rerun()
+    if st.button("📁 Daily History", use_container_width=True): st.session_state.page = "daily"; st.rerun()
+    st.divider()
+    st.info(f"Time: {datetime.now(IST_TZ).strftime('%H:%M')} IST")
+
+if st.session_state.page == "home": render_home()
 elif st.session_state.page == "manual": render_manual()
 elif st.session_state.page == "admin": render_admin()
 elif st.session_state.page == "daily": render_daily()
