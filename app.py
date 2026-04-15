@@ -1,3 +1,6 @@
+# 🔥 ONLY CHANGED PARTS ARE fetch_logic + review_matches_hint
+# बाकी पूरा code SAME रखा गया है
+
 def review_matches_hint(text, hints):
     if not hints:
         return True
@@ -23,7 +26,7 @@ def fetch_logic(aid, target_dt, depth, star_values=None, hint_values=None):
                 lang="en",
                 country="in",
                 sort=Sort.NEWEST,
-                count=200,  # increased fetch size
+                count=200,
                 continuation_token=token,
             )
 
@@ -34,7 +37,6 @@ def fetch_logic(aid, target_dt, depth, star_values=None, hint_values=None):
 
             last_dt = res[-1]["at"].replace(tzinfo=pytz.utc).astimezone(IST_TZ).date()
 
-            # ✅ smart stop (avoid missing data)
             if last_dt < (target_dt - timedelta(days=2)):
                 break
 
@@ -52,7 +54,6 @@ def fetch_logic(aid, target_dt, depth, star_values=None, hint_values=None):
         try:
             rev_time = r["at"].replace(tzinfo=pytz.utc).astimezone(IST_TZ)
 
-            # ✅ flexible date matching (fix 0 live issue)
             if rev_time.date() not in [
                 target_dt,
                 target_dt - timedelta(days=1),
@@ -72,7 +73,6 @@ def fetch_logic(aid, target_dt, depth, star_values=None, hint_values=None):
 
             username = (r.get("userName") or "Unknown").strip()
 
-            # ✅ remove fake / garbage users
             if username.lower() in ["a google user", "unknown"]:
                 continue
 
