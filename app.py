@@ -9,29 +9,68 @@ import pytz
 import streamlit as st
 from google_play_scraper import Sort, reviews
 
-# 1. Page Config
+# 1. Page Config & Professional UI Theme
 st.set_page_config(page_title="RW Pro Live Checker", page_icon="🚀", layout="wide")
 
-# 2. UI Styling
 st.markdown(
     """
     <style>
-    .block-container { padding-top: 2rem !important; }
-    .stButton > button {
-        width: 100% !important;
-        font-weight: 700 !important;
-        border-radius: 12px !important;
-        background: linear-gradient(135deg, #f8fbff 0%, #edf4ff 100%) !important;
-        color: #0f172a !important;
+    /* Main Background and Font */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+    
+    .main { background-color: #f8fafc; }
+    
+    /* Custom Header Card */
+    .brand-container {
+        background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+        padding: 2rem;
+        border-radius: 20px;
+        color: white;
+        margin-bottom: 2rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        gap: 20px;
     }
-    .brand-wrap {
-        display: flex; align-items: center; justify-content: space-between;
-        border: 1px solid #e5e7eb; border-radius: 16px; padding: 12px 16px;
-        margin-bottom: 14px; background: white;
+    
+    /* Card Styling */
+    .st-emotion-cache-1r6slb0, .report-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 15px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        margin-bottom: 1rem;
     }
-    .report-card {
-        border: 1px solid #dbeafe; border-radius: 14px; padding: 12px 14px;
-        background: #f8fbff; margin-bottom: 10px;
+    
+    /* Button Styling */
+    div.stButton > button {
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        height: 3rem;
+    }
+    
+    div.stButton > button:first-child {
+        background-color: #6366f1 !important;
+        color: white !important;
+        border: none !important;
+    }
+    
+    div.stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);
+    }
+    
+    /* Metric / Counter */
+    .live-badge {
+        background: #ecfdf5;
+        color: #065f46;
+        padding: 5px 15px;
+        border-radius: 999px;
+        font-weight: 700;
+        border: 1px solid #a7f3d0;
     }
     </style>
     """,
@@ -51,8 +90,7 @@ def ensure_db_files():
 
 def load_json(path):
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(path, "r", encoding="utf-8") as f: return json.load(f)
     except: return []
 
 def save_json(path, data):
@@ -63,14 +101,11 @@ def extract_id(url):
     match = re.search(r"id=([a-zA-Z0-9._]+)", url)
     return match.group(1) if match else url.strip()
 
-def normalize_csv_values(raw):
-    return [x.strip() for x in str(raw).split(",") if x.strip()]
-
-# --------- CORE FETCH LOGIC (ANTI-BEN HOEK) ---------
+# --------- CORE FETCH LOGIC (STABLE) ---------
 def fetch_logic(aid, target_dt, depth_pages, star_values=None, hint_values=None):
     all_raw = []
     token = None
-    stop_date = target_dt - timedelta(days=2) # Deep search buffer
+    stop_date = target_dt - timedelta(days=2) # Deep search safety
     
     for _ in range(depth_pages):
         try:
@@ -93,16 +128,15 @@ def fetch_logic(aid, target_dt, depth_pages, star_values=None, hint_values=None)
 
         matches.append({
             "User": r.get("userName", "Unknown"),
-            "User Logo": r.get("userImage", ""),
+            "Rating": f"{r.get('score', 0)}/5",
             "Review": text,
             "App ID": aid,
-            "Rating": f"{r.get('score', 0)}/5",
+            "Logo": r.get("userImage", ""),
             "Date": rev_dt.strftime("%Y-%m-%d")
         })
     return matches
 
-# --------- Logic for Automation ---------
-def run_due_daily_jobs(scan_depth=500):
+def run_due_daily_jobs():
     apps = load_json(APP_DB_PATH)
     reports = load_json(DAILY_DB_PATH)
     now_ist = datetime.now(IST_TZ)
@@ -112,116 +146,149 @@ def run_due_daily_jobs(scan_depth=500):
     for app in apps:
         created_dt = datetime.fromisoformat(app["created_at"])
         due_date = (created_dt + timedelta(days=app.get("days_after", 0))).date()
-        
-        # Check if due today
         report_key = (app["app_id"], due_date.strftime("%Y-%m-%d"))
+        
         if due_date <= now_ist.date() and report_key not in report_index:
-            found = fetch_logic(app["app_id"], due_date, scan_depth // 100, app.get("stars", []), app.get("hints", []))
+            found = fetch_logic(app["app_id"], due_date, 5, app.get("stars", []), app.get("hints", []))
             reports.append({
-                "app_id": app["app_id"],
-                "app_name": app["app_name"],
+                "app_id": app["app_id"], "app_name": app["app_name"],
                 "report_date": due_date.strftime("%Y-%m-%d"),
                 "users": sorted({x["User"] for x in found}),
-                "detailed_rows": found,
-                "generated_at": now_ist.isoformat()
+                "detailed_rows": found, "generated_at": now_ist.isoformat()
             })
             generated += 1
-    
     if generated: save_json(DAILY_DB_PATH, reports)
     return generated
 
-# --------- Pages ---------
+# --------- UPGRADED UI PAGES ---------
 def render_manual_page():
-    st.subheader("Professional Review Checker")
+    st.markdown("### 🔍 Live Analysis")
     if "manual_results" not in st.session_state: st.session_state.manual_results = []
     
-    mode = st.sidebar.radio("Mode", ["Single App", "Bulk Links"])
-    target_date = st.sidebar.date_input("Target Date", datetime.now(IST_TZ).date())
-    scan_depth = st.sidebar.select_slider("Depth", options=[1, 5, 10, 50, 100], value=10)
-    hint_val = st.sidebar.text_input("Hint (e.g. #)", value="#")
-    
-    if mode == "Single App":
-        urls = [st.sidebar.text_input("Play Store Link", "")]
-    else:
-        urls = [u.strip() for u in st.sidebar.text_area("Paste Links").split("\n") if u.strip()]
+    with st.container():
+        col_a, col_b = st.columns([1, 1])
+        with col_a:
+            mode = st.radio("Search Mode", ["Single Link", "Bulk Mode"], horizontal=True)
+            target_date = st.date_input("Filter Date", datetime.now(IST_TZ).date())
+        with col_b:
+            scan_depth = st.select_slider("Search Depth", options=[1, 5, 10, 20, 50], value=10)
+            hint_val = st.text_input("End-Hint Symbol", value="#")
 
-    if st.button("🚀 Run Check"):
+    if mode == "Single Link":
+        urls = [st.text_input("Enter App Link", placeholder="https://play.google.com/...")]
+    else:
+        urls = [u.strip() for u in st.text_area("Paste Multiple Links (One per line)").split("\n") if u.strip()]
+
+    if st.button("🚀 Start Professional Scan"):
         st.session_state.manual_results = []
         for u in urls:
             aid = extract_id(u)
             if aid: st.session_state.manual_results.extend(fetch_logic(aid, target_date, scan_depth, hint_values=[hint_val] if hint_val else []))
-        st.success(f"Found {len(st.session_state.manual_results)} reviews.")
+        st.rerun()
 
     if st.session_state.manual_results:
         df = pd.DataFrame(st.session_state.manual_results)
-        st.dataframe(df, use_container_width=True)
-        # Excel Export
+        st.markdown(f'<span class="live-badge">Verified Live: {len(df)}</span>', unsafe_allow_html=True)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        
+        # Pro Export
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False)
-        st.download_button("📥 Excel Report", output.getvalue(), "Report.xlsx")
+        df.to_excel(output, index=False)
+        st.download_button("📥 Export Report to Excel", output.getvalue(), f"RW_Report_{target_date}.xlsx")
 
 def render_admin_page():
-    st.subheader("Admin Panel")
+    st.markdown("### 🛠️ Campaign Manager")
     apps = load_json(APP_DB_PATH)
     
-    with st.form("add_app", clear_on_submit=True):
-        name = st.text_input("App Name")
-        link = st.text_input("Play Store Link")
-        hints = st.text_input("Hints (comma separated)")
-        stars = st.text_input("Stars (comma separated)", value="5")
-        days = st.number_input("Days After (Set 0 for today)", min_value=0, value=7) # <--- 0 DAY ENABLED
-        if st.form_submit_button("Save App"):
-            aid = extract_id(link)
-            apps.append({
-                "app_name": name, "app_id": aid, "app_url": link,
-                "hints": normalize_csv_values(hints),
-                "stars": [int(s) for s in normalize_csv_values(stars) if s.isdigit()],
-                "days_after": int(days), "created_at": datetime.now(IST_TZ).isoformat()
-            })
-            save_json(APP_DB_PATH, apps)
-            st.success("App added!")
-            st.rerun()
+    with st.expander("➕ Add New Campaign", expanded=False):
+        with st.form("new_app"):
+            c1, c2 = st.columns(2)
+            name = c1.text_input("Client/App Name")
+            link = c2.text_input("Play Store Link")
+            h = c1.text_input("Hints (comma separated)")
+            d = c2.number_input("Days After (0 for same day)", min_value=0, value=7)
+            if st.form_submit_button("💾 Save to Database"):
+                aid = extract_id(link)
+                apps.append({
+                    "app_name": name, "app_id": aid, "app_url": link,
+                    "hints": [x.strip() for x in h.split(",") if x.strip()],
+                    "days_after": int(d), "created_at": datetime.now(IST_TZ).isoformat()
+                })
+                save_json(APP_DB_PATH, apps); st.rerun()
 
-    st.markdown("### Existing Apps")
+    st.markdown("#### Active Monitoring")
     for i, app in enumerate(apps):
-        cols = st.columns([3, 1, 1])
-        cols[0].write(f"**{app['app_name']}** ({app['app_id']}) - Days: {app['days_after']}")
-        if cols[1].button("Copy", key=f"cp_{i}"):
-            new_app = app.copy()
-            new_app["app_name"] += " (Copy)"
-            apps.append(new_app); save_json(APP_DB_PATH, apps); st.rerun()
-        if cols[2].button("Delete", key=f"del_{i}"):
-            apps.pop(i); save_json(APP_DB_PATH, apps); st.rerun()
+        with st.container():
+            col1, col2, col3, col4 = st.columns([4, 1, 1, 1])
+            col1.markdown(f"**{app['app_name']}** <br> <code style='font-size:0.7rem'>{app['app_id']}</code>", unsafe_allow_html=True)
+            col2.write(f"📅 Day {app['days_after']}")
+            if col3.button("📋 Copy", key=f"c_{i}"):
+                apps.append(app.copy()); save_json(APP_DB_PATH, apps); st.rerun()
+            if col4.button("🗑️ Del", key=f"d_{i}"):
+                apps.pop(i); save_json(APP_DB_PATH, apps); st.rerun()
 
 def render_daily_list_page():
-    st.subheader("Generated Lists")
-    run_due_daily_jobs()
-    reports = load_json(DAILY_DB_PATH)
+    st.markdown("### 📊 Auto-Generated Intelligence")
+    if st.button("♻️ Force Sync Now"): run_due_daily_jobs(); st.rerun()
     
+    reports = load_json(DAILY_DB_PATH)
     if not reports:
-        st.info("No reports generated yet.")
+        st.info("No reports have been triggered yet. Add an app with '0 days' to test.")
     else:
         for i, r in enumerate(reversed(reports)):
-            with st.expander(f"{r['app_name']} - {r['report_date']} ({len(r['users'])} live)"):
-                st.write(f"Generated at: {r['generated_at']}")
-                st.write(", ".join(r['users']))
-                if st.button("Delete Report", key=f"del_rep_{i}"):
+            with st.container():
+                st.markdown(f"""
+                <div class="report-card">
+                    <div style="display:flex; justify-content:space-between;">
+                        <span style="font-weight:700; color:#1e293b;">{r['app_name']}</span>
+                        <span class="live-badge">{len(r['users'])} Live</span>
+                    </div>
+                    <p style="font-size:0.8rem; color:#64748b; margin:5px 0;">Target Date: {r['report_date']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                if st.button("❌ Remove Report", key=f"dr_{i}"):
                     reports.remove(r); save_json(DAILY_DB_PATH, reports); st.rerun()
 
-# --------- Main ---------
+# --------- Main Navigation ---------
 ensure_db_files()
-logo_url = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
-st.markdown(f'<div class="brand-wrap"><img src="{logo_url}" width="54"><h2>RW Live Checker</h2></div>', unsafe_allow_html=True)
+logo = "https://raw.githubusercontent.com/RWtest9525/RW_playstore_Live_cheker/main/logo.png"
+
+# Premium Header
+st.markdown(f"""
+    <div class="brand-container">
+        <img src="{logo}" width="70">
+        <div>
+            <h1 style='margin:0; font-size:1.8rem;'>RW PRO LIVE CHECKER</h1>
+            <p style='margin:0; opacity:0.8;'>Reviews World Digital Operations Dashboard</p>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
 
 if "page" not in st.session_state: st.session_state.page = "home"
+
+# Professional Sidebar Nav
+with st.sidebar:
+    st.markdown("### 🗺️ Navigation")
+    if st.button("🏠 Home Dashboard", use_container_width=True): st.session_state.page = "home"; st.rerun()
+    if st.button("✨ Make New List", use_container_width=True): st.session_state.page = "manual"; st.rerun()
+    if st.button("⚙️ Campaign Setup", use_container_width=True): st.session_state.page = "admin"; st.rerun()
+    if st.button("📈 Daily Reports", use_container_width=True): st.session_state.page = "daily"; st.rerun()
+    st.divider()
+    st.info("System Online: IST")
+
 if st.session_state.page == "home":
+    st.markdown("## Welcome back, Yash.")
+    st.write("Current Status: Monitoring active reviews across Google Play Store.")
+    
+    # Quick Action Tiles
     c1, c2, c3 = st.columns(3)
-    if c1.button("Make List"): st.session_state.page = "manual"; st.rerun()
-    if c2.button("Add App"): st.session_state.page = "admin"; st.rerun()
-    if c3.button("View List"): st.session_state.page = "daily"; st.rerun()
-else:
-    if st.button("⬅️ Back"): st.session_state.page = "home"; st.rerun()
-    if st.session_state.page == "manual": render_manual_page()
-    elif st.session_state.page == "admin": render_admin_page()
-    elif st.session_state.page == "daily": render_daily_list_page()
+    with c1: 
+        if st.button("New Manual Scan"): st.session_state.page = "manual"; st.rerun()
+    with c2: 
+        if st.button("Configure Apps"): st.session_state.page = "admin"; st.rerun()
+    with c3: 
+        if st.button("Review History"): st.session_state.page = "daily"; st.rerun()
+
+elif st.session_state.page == "manual": render_manual_page()
+elif st.session_state.page == "admin": render_admin_page()
+elif st.session_state.page == "daily": render_daily_list_page()
