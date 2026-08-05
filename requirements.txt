@@ -4,3 +4,4 @@ google-play-scraper
 pytz
 Pillow
 xlsxwriter
+starlette<0.40.0
