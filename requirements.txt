@@ -1,6 +1,6 @@
-streamlit==1.59.1
-pandas==3.0.3
-google-play-scraper==1.2.7
-pytz==2026.2
-pillow==12.3.0
-xlsxwriter==3.2.9
+streamlit
+pandas
+google-play-scraper
+pytz
+Pillow
+xlsxwriter
